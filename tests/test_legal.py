@@ -222,3 +222,20 @@ def test_bot_texts_match_offer():
     import inspect
     src = inspect.getsource(texts)
     assert "в течение 3 дней" not in src and "14 дней" not in src
+
+
+def test_publish_versions_are_clean_and_current():
+    import subprocess, sys
+    subprocess.run([sys.executable, str(ROOT / "docs/legal/build_publish.py")], check=True, capture_output=True)
+    for name in ("offer", "privacy", "consent"):
+        src = (ROOT / f"docs/legal/{name}.md").read_text(encoding="utf-8")
+        pub = (ROOT / f"docs/legal/publish/{name}.txt").read_text(encoding="utf-8")
+        assert "LEGAL_REVIEW" not in pub and "**" not in pub and "`" not in pub and "|" not in pub
+        assert "732771557733" in pub
+        # публикационная версия соответствует исходнику (не забыли пересобрать)
+        from importlib import util
+        spec = util.spec_from_file_location("bp", ROOT / "docs/legal/build_publish.py")
+        bp = util.module_from_spec(spec); spec.loader.exec_module(bp)
+        assert bp.convert(src) == pub
+    offer = (ROOT / "docs/legal/publish/offer.txt").read_text(encoding="utf-8")
+    assert "990" in offer and "165" in offer and "текстовая версия" not in offer
