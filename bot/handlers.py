@@ -245,3 +245,14 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
         f"Заблокировали бота: {s['blocked']}\n\n"
         f"<b>Источники</b> (?start=…)\n{src_lines or '  пока нет'}"
     )
+
+
+@router.message(Command("autopost"))
+async def cmd_autopost(
+    message: Message, bot: Bot, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    """Админ: состояние автопостинга и ближайшие посты."""
+    if message.from_user.id not in config.admin_ids:
+        return
+    from bot.channel import autopost_status
+    await message.answer(await autopost_status(bot, sessionmaker, config))

@@ -251,3 +251,11 @@ async def test_publish_due_once(sm, tmp_path):
     assert await publish_due(h.bot, sm, BASE, now, tmp_path) == ["2026-11-10_1900_hello"]
     assert [c.chat_id for c in h.session.calls] == ["@onaotkrytaya"]
     assert await publish_due(h.bot, sm, BASE, now, tmp_path) == []
+
+
+async def test_autopost_status(sm, tmp_path):
+    from bot.channel import autopost_status
+    _post(tmp_path, "2026-11-16_1900_hello.md", "<b>Знакомство</b>\nтекст")
+    h = Harness(replace(BASE, autopost=True), sm)
+    text = await autopost_status(h.bot, sm, h.config, datetime(2026, 11, 10, tzinfo=timezone.utc), tmp_path)
+    assert "включён" in text and "16.11 19:00 — Знакомство" in text and "В очереди:</b> 1" in text

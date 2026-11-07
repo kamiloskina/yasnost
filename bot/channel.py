@@ -101,3 +101,33 @@ async def publish_due(
             published.append(post.slug)
             log.info("published channel post %s", post.slug)
     return published
+
+
+async def autopost_status(bot: Bot, sessionmaker: async_sessionmaker, config: Config,
+                          now: datetime | None = None, channel_dir: Path = CHANNEL_DIR) -> str:
+    """Текст для админ-команды /autopost: включено ли, есть ли права, что выйдет дальше."""
+    now = now or datetime.now(timezone.utc)
+    lines = [f"<b>Автопостинг:</b> {'включён' if config.autopost else 'выключен (AUTOPOST=false)'}"]
+    lines.append(f"<b>Канал:</b> {config.channel_id or 'не задан (CHANNEL_ID)'}")
+    if config.channel_id:
+        try:
+            me = await bot.get_me()
+            member = await bot.get_chat_member(config.channel_id, me.id)
+            can_post = member.status == "creator" or bool(getattr(member, "can_post_messages", False))
+            lines.append(
+                "<b>Права бота:</b> " + ("может публиковать ✓" if can_post else
+                                         f"нет права публиковать (статус: {member.status})")
+            )
+        except Exception as e:
+            lines.append(f"<b>Права бота:</b> не удалось проверить — бот не добавлен в канал? ({e})")
+    async with sessionmaker() as session:
+        posted = set(await session.scalars(select(ChannelPost.slug)))
+    tz = ZoneInfo(config.default_timezone)
+    upcoming = [p for p in load_posts(config.default_timezone, channel_dir)
+                if p.slug not in posted and p.at + MAX_LATENESS >= now]
+    lines.append(f"\n<b>Опубликовано:</b> {len(posted)}. <b>В очереди:</b> {len(upcoming)}.")
+    for p in upcoming[:5]:
+        first = p.text.splitlines()[0] if p.text else p.slug
+        first = re.sub(r"<[^>]+>", "", first)
+        lines.append(f"• {p.at.astimezone(tz):%d.%m %H:%M} — {first}")
+    return "\n".join(lines)
