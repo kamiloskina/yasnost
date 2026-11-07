@@ -27,6 +27,8 @@ from bot.services import delivered_map
 from bot.payments import PAYLOAD, invoice_params
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
+from bot.refunds import router as refunds_router
+from bot.support import router as support_router
 from bot.payments import router as pay_router
 
 ADMIN = 1
@@ -60,16 +62,19 @@ class FakeSession(BaseSession):
 
 
 class Harness:
-    def __init__(self, config, sm):
+    def __init__(self, config, sm, auto_legal=True):
+        self.auto_legal = auto_legal
         self.config = config
         self.session = FakeSession()
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
-        for r in (pay_router, audio_router, media_router, main_router):  # отвязываем от прошлого теста
-            r._parent_router = None
+        for r in (pay_router, audio_router, media_router, support_router, refunds_router, main_router):
+            r._parent_router = None  # роутеры модульные: отвязываем от прошлого теста
         self.dp.include_router(pay_router)
         self.dp.include_router(audio_router)
         self.dp.include_router(media_router)
+        self.dp.include_router(support_router)
+        self.dp.include_router(refunds_router)
         self.dp.include_router(main_router)
         self.sm = sm
         self.n = 0
@@ -83,6 +88,18 @@ class Harness:
         await self.dp.feed_update(self.bot, Update(update_id=self.n, **kw))
         return self.session.calls
 
+    async def ensure_legal(self, uid, consent=True, offer=True):
+        """Согласие и акцепт, как если бы пользователь уже нажал соответствующие кнопки."""
+        from bot import legal
+        from bot.services import get_or_create_user
+        async with self.sm() as s:
+            u = await get_or_create_user(s, uid, None, "Аня", "Europe/Moscow")
+            if consent and not await legal.has_pd_consent(s, u):
+                await legal.record(s, u, legal.PD_CONSENT)
+            if offer and not await legal.has_offer_accept(s, u):
+                await legal.record(s, u, legal.OFFER_ACCEPT)
+            await s.commit()
+
     def _msg(self, uid, **kw):
         return Message(message_id=self.n + 1, date=datetime.now(), chat=Chat(id=uid, type="private"),
                        from_user=self._user(uid), **kw)
@@ -91,11 +108,15 @@ class Harness:
         return await self.feed(message=self._msg(uid, text=t))
 
     async def click(self, data, uid=BUYER):
+        if self.auto_legal and data in ("day1", "buy", "buy:tracker"):
+            await self.ensure_legal(uid)
         m = self._msg(uid, text="x")
         return await self.feed(callback_query=CallbackQuery(
             id=str(self.n), from_user=self._user(uid), chat_instance="c", message=m, data=data))
 
     async def pre_checkout(self, uid=BUYER, payload=PAYLOAD):
+        if self.auto_legal:
+            await self.ensure_legal(uid)
         return await self.feed(pre_checkout_query=PreCheckoutQuery(
             id="pc", from_user=self._user(uid), currency="XTR", total_amount=650,
             invoice_payload=payload))
@@ -230,7 +251,7 @@ async def test_source_saved_once_and_shown_in_stats(sm):
     async with sm() as s:
         assert (await s.scalar(select(User))).source == "reels_01"
     calls = await h.text("/stats", uid=ADMIN)
-    assert any("reels_01: пришли 1" in t for t in texts_of(calls))
+    assert any("reels_01: пришли 1 → День 1: 0 → оплатили 0" in t for t in texts_of(calls))
 
 
 # ---------- автопостинг ----------
@@ -352,6 +373,7 @@ async def test_tracker_stars_payment(sm):
     calls = await h.click("buy:tracker")
     inv = [c for c in calls if isinstance(c, SendInvoice)]
     assert inv and inv[0].payload == TRACKER_PAYLOAD and inv[0].prices[0].amount == 320
+    await h.ensure_legal(BUYER)
     calls = await h.feed(pre_checkout_query=PreCheckoutQuery(
         id="pc", from_user=h._user(BUYER), currency="XTR", total_amount=320,
         invoice_payload=TRACKER_PAYLOAD))
@@ -494,7 +516,9 @@ async def test_admin_keeps_test_access_and_next(sm):
 @pytest.fixture(autouse=True)
 def _clear_audio_state():
     from bot import admin_audio, admin_media, lesson_audio
+    from bot import support
     lesson_audio.CACHE.clear(); admin_audio.pending.clear(); admin_media.pending.clear()
+    support.pending.clear()
     yield
     lesson_audio.CACHE.clear(); admin_audio.pending.clear(); admin_media.pending.clear()
 
@@ -564,16 +588,16 @@ async def test_refund_suggests_prorated_amount(sm):
     h = Harness(cfg, sm)
     await h.click("day1")
     await h.paid("yk-1", currency="RUB", amount=99000)
-    await h.text("/next")  # день 2 (если ещё не пришёл)
+    await h.text("/next")
     await h.text("/next")
     async with sm() as s:
         u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        opened = len([d for d in await delivered_map(s, u) if d > 1])
+        stages = len([d for d in await delivered_map(s, u) if d > 1])
     calls = await h.text(f"/refund {BUYER}", uid=ADMIN)
-    due = round(990 * (6 - opened) / 6)
-    assert any(f"Открыто платных дней: {opened} из 6. По оферте вернуть {due} ₽" in t
-               for t in texts_of(calls)), texts_of(calls)
-
+    due = 990 - 165 * stages
+    admin_msgs = [t for c in calls if isinstance(c, SendMessage) and c.chat_id == ADMIN for t in [c.text]]
+    assert any(f"Направлено платных этапов: {stages} из 6" in t and f"К возврату по оферте: {due} ₽" in t
+               for t in admin_msgs), admin_msgs
 
 
 async def test_history_shows_payments_and_delivery_times(sm):
@@ -585,3 +609,105 @@ async def test_history_shows_payments_and_delivery_times(sm):
     text = texts_of(calls)[0]
     assert "course, 990 ₽, test, статус: paid" in text and "День 1:" in text and "День 2:" in text
     assert await h.text(f"/history {BUYER}", uid=777) == []  # посторонний — тишина
+
+
+
+# ---------- поддержка ----------
+
+async def test_support_roundtrip(sm):
+    h = Harness(BASE, sm)
+    calls = await h.text("/paysupport")
+    assert any("одним сообщением" in t for t in texts_of(calls))
+    calls = await h.text("Оплатила, а день 2 не пришёл <срочно>")
+    to_admin = [c for c in calls if isinstance(c, SendMessage) and c.chat_id == ADMIN]
+    assert to_admin and "#id42" in to_admin[0].text and "&lt;срочно&gt;" in to_admin[0].text
+    assert any("передала" in t for t in texts_of(calls))
+    # ответ админа reply'ем
+    header = Message(message_id=500, date=datetime.now(), chat=Chat(id=ADMIN, type="private"),
+                     text=to_admin[0].text)
+    reply = Message(message_id=501, date=datetime.now(), chat=Chat(id=ADMIN, type="private"),
+                    from_user=h._user(ADMIN), text="Проверила, день 2 придёт завтра в 9:00", reply_to_message=header)
+    calls = await h.feed(message=reply)
+    to_user = [c for c in calls if isinstance(c, SendMessage) and c.chat_id == BUYER]
+    assert to_user and "день 2 придёт завтра" in to_user[0].text
+    assert any("Ответ отправлен" in t for t in texts_of(calls))
+
+
+async def test_support_cancel_and_commands_not_swallowed(sm):
+    h = Harness(BASE, sm)
+    await h.text("/paysupport")
+    calls = await h.text("/cancel")
+    assert any("отменила" in t for t in texts_of(calls))
+    calls = await h.text("просто текст")
+    assert calls == []  # после отмены ничего не пересылается
+    await h.text("/paysupport")
+    calls = await h.text("/start")  # команда не уходит в поддержку
+    assert any("ОНА. ОТКРЫТАЯ." in t for t in texts_of(calls))
+
+
+async def test_regular_user_reply_is_not_relayed(sm):
+    h = Harness(BASE, sm)
+    fake = Message(message_id=1, date=datetime.now(), chat=Chat(id=BUYER, type="private"), text="#id777")
+    reply = Message(message_id=2, date=datetime.now(), chat=Chat(id=BUYER, type="private"),
+                    from_user=h._user(BUYER), text="hi", reply_to_message=fake)
+    calls = await h.feed(message=reply)
+    assert not any(isinstance(c, SendMessage) and c.chat_id == 777 for c in calls)
+
+
+async def test_forget_keeps_payments(sm):
+    h = Harness(TESTER, sm)
+    await h.text("/start reels_01")
+    await h.click("day1")
+    await h.click("buy")
+    calls = await h.text(f"/forget {BUYER}", uid=ADMIN)
+    assert any("Удалила" in t for t in texts_of(calls))
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        assert u.first_name is None and u.source is None
+        assert await delivered_map(s, u) == {}
+        assert len(list(await s.scalars(select(Purchase)))) == 1
+    assert await h.text(f"/forget {BUYER}", uid=777) == []
+
+
+
+async def test_channel_buttons_get_per_post_tag(sm, tmp_path):
+    _post(tmp_path, "2026-11-09_1900_pochemu.md",
+          "Текст\n@button В бот | https://t.me/Clarity7DaysBot?start=channel")
+    h = Harness(BASE, sm)
+    now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
+    await publish_due(h.bot, sm, BASE, now, tmp_path)
+    url = h.session.calls[-1].reply_markup.inline_keyboard[0][0].url
+    assert url == "https://t.me/Clarity7DaysBot?start=ch1109"
+    await h.text("/start ch1109")
+    await h.click("day1")
+    calls = await h.text("/stats", uid=ADMIN)
+    assert any("ch1109: пришли 1 → День 1: 1 → оплатили 0" in t for t in texts_of(calls))
+
+
+async def test_practice_script_not_sent_without_audio(sm):
+    h = Harness(BASE, sm)
+    calls = await h.click("day1")
+    t = texts_of(calls)
+    assert not any("Сядь удобно. Поставь стопы" in x for x in t)
+    assert any("Аудиопрактика «Кто я, когда никто не смотрит»" in x and "скоро появится" in x for x in t)
+    assert any("<b>Вопросы</b>" in x for x in t)  # остальной день на месте
+
+
+async def test_audio_broadcast_to_day_receivers_once(sm):
+    from aiogram.methods import SendAudio
+    from aiogram.types import Audio
+    from bot import admin_audio
+    admin_audio.broadcasted.clear()
+    h = Harness(BASE, sm)
+    await h.click("day1")              # получила День 1 без аудио
+    await h.click("day1", uid=777)     # ещё одна участница
+    await h.click("aud:1", uid=ADMIN)
+    calls = await h.feed(message=h._msg(ADMIN, audio=Audio(file_id="A1", file_unique_id="a", duration=600)))
+    assert any("уже получили без аудио: 2 чел." in t for t in texts_of(calls))
+    calls = await h.click("aud_send:1", uid=ADMIN)
+    got = sorted(c.chat_id for c in calls if isinstance(c, SendAudio))
+    assert got == [BUYER, 777] and any("Отправила аудио к Дню 1: 2 чел." in t for t in texts_of(calls))
+    calls = await h.click("aud_send:1", uid=ADMIN)  # повторное нажатие
+    assert not any(isinstance(c, SendAudio) for c in calls)
+    calls = await h.click("aud_send:1", uid=BUYER)  # не админ: только снятие «часиков» с кнопки
+    assert not any(isinstance(c, (SendAudio, SendMessage)) for c in calls)

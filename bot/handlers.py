@@ -15,7 +15,10 @@ from bot.services import (
     TOTAL_DAYS, TRACKER, delivered_map, due_time_for_next_day, get_or_create_user,
     grant_purchase, has_paid, reset_user, stats, stats_by_source,
 )
+from bot import legal
 from bot.tracker import offer_tracker, send_tracker
+from aiogram.types import InlineKeyboardButton as Btn
+from aiogram.types import InlineKeyboardMarkup as Kb
 
 router = Router()
 
@@ -78,9 +81,31 @@ async def cb_day1(
     await call.answer()
     async with sessionmaker() as session:
         user = await _user(session, call.from_user, config)
+        if not await legal.has_pd_consent(session, user):
+            await bot.send_message(
+                call.from_user.id, texts.consent_request(config),
+                reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_CONSENT, callback_data="consent")]]),
+            )
+            return
+        delivered = await delivered_map(session, user)
+        if 1 not in delivered:
+            await legal.record(session, user, legal.FREE_ACCEPT)
+            await session.commit()
         sent = await deliver_day(bot, session, user, 1, config)
     if not sent:
         await call.message.answer(texts.DAY1_ALREADY, reply_markup=keyboards.my_days_only())
+
+
+@router.callback_query(F.data == "consent")
+async def cb_consent(call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config) -> None:
+    """Отдельное действие: согласие на обработку ПДн (152-ФЗ, ст. 9). Не отмечено заранее."""
+    await call.answer()
+    async with sessionmaker() as session:
+        user = await _user(session, call.from_user, config)
+        if not await legal.has_pd_consent(session, user):
+            await legal.record(session, user, legal.PD_CONSENT)
+            await session.commit()
+    await bot.send_message(call.from_user.id, texts.CONSENT_THANKS, reply_markup=keyboards.about())
 
 
 def _when_text(prev_at: datetime, tz_name: str, hour: int, now: datetime) -> str:
@@ -119,36 +144,73 @@ async def after_payment(
     await deliver_if_due(bot, session, user, config, now)
 
 
+def _payments_closed(config: Config, chat_id: int) -> bool:
+    return config.payment_mode == "off" or (
+        config.payment_mode == "test" and not config.test_access(chat_id)
+    )
+
+
+async def _ask_offer_accept(bot: Bot, chat_id: int, config: Config, product: str) -> None:
+    if product == TRACKER:
+        label, price = texts.TRACKER_NAME, texts.tracker_price_label(config)
+    else:
+        label, price = "Дни 2–7 пути «7 дней. Путь к Ясности»", texts.price_label(config)
+    await bot.send_message(
+        chat_id, texts.offer_confirm(config, label, price),
+        reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_ACCEPT_OFFER, callback_data=f"accept:{product}")]]),
+    )
+
+
+@router.callback_query(F.data.startswith("accept:"))
+async def cb_accept_offer(call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config) -> None:
+    """Отдельное действие: акцепт платной части оферты (ст. 438 ГК) перед оплатой."""
+    await call.answer()
+    product = call.data.split(":", 1)[1]
+    async with sessionmaker() as session:
+        user = await _user(session, call.from_user, config)
+        if not await legal.has_offer_accept(session, user):
+            await legal.record(session, user, legal.OFFER_ACCEPT, detail=product)
+            await session.commit()
+        if product == TRACKER:
+            await _buy_tracker(bot, session, user, config, call.from_user.id)
+        else:
+            await _buy_course(bot, session, user, config, call.from_user.id)
+
+
 @router.callback_query(F.data == "buy")
 async def cb_buy(
     call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
     await call.answer()
-    chat_id = call.from_user.id
     async with sessionmaker() as session:
         user = await _user(session, call.from_user, config)
-        if await has_paid(session, user):
-            await bot.send_message(chat_id, texts.ALREADY_PAID)
-            return
-        if config.payment_mode == "off" or (
-            config.payment_mode == "test" and not config.test_access(chat_id)
-        ):
-            user.wants_purchase = True
-            await session.commit()
-            await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
-            return
-        if config.payment_mode in {"yookassa", "stars"}:
-            user.wants_purchase = True
-            await session.commit()
-            await send_invoice(bot, chat_id, config)
-            return
-        # test
-        await grant_purchase(
-            session, user, provider="test", provider_payment_id=f"test-{user.tg_id}",
-            amount=config.price_rub * 100,
-        )
+        await _buy_course(bot, session, user, config, call.from_user.id)
+
+
+async def _buy_course(bot: Bot, session: AsyncSession, user, config: Config, chat_id: int) -> None:
+    if await has_paid(session, user):
+        await bot.send_message(chat_id, texts.ALREADY_PAID)
+        return
+    if _payments_closed(config, chat_id):
+        user.wants_purchase = True
         await session.commit()
-        await after_payment(bot, session, user, config, chat_id, test=True)
+        await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
+        return
+    if not await legal.has_offer_accept(session, user):
+        await _ask_offer_accept(bot, chat_id, config, "course")
+        return
+    if config.payment_mode in {"yookassa", "stars"}:
+        user.wants_purchase = True
+        await session.commit()
+        await send_invoice(bot, chat_id, config)
+        return
+    # test
+    await grant_purchase(
+        session, user, provider="test", provider_payment_id=f"test-{user.tg_id}",
+        amount=config.price_rub * 100,
+    )
+    await session.commit()
+    await after_payment(bot, session, user, config, chat_id, test=True)
 
 
 async def _show_days(message: Message, tg: TgUser, sessionmaker, config: Config) -> None:
@@ -215,28 +277,32 @@ async def cb_buy_tracker(
     call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
     await call.answer()
-    chat_id = call.from_user.id
     async with sessionmaker() as session:
         user = await _user(session, call.from_user, config)
-        if await has_paid(session, user, TRACKER):
-            await bot.send_message(chat_id, texts.TRACKER_ALREADY)
-            await send_tracker(bot, chat_id)
-            return
-        if config.payment_mode == "off" or (
-            config.payment_mode == "test" and not config.test_access(chat_id)
-        ):
-            user.wants_purchase = True
-            await session.commit()
-            await bot.send_message(chat_id, texts.PAYMENT_CLOSED)
-            return
-        if config.payment_mode in {"yookassa", "stars"}:
-            await send_invoice(bot, chat_id, config, TRACKER)
-            return
-        await grant_purchase(
-            session, user, provider="test", provider_payment_id=f"test-tracker-{user.tg_id}",
-            amount=config.tracker_price_rub * 100, product=TRACKER,
-        )
+        await _buy_tracker(bot, session, user, config, call.from_user.id)
+
+
+async def _buy_tracker(bot: Bot, session: AsyncSession, user, config: Config, chat_id: int) -> None:
+    if await has_paid(session, user, TRACKER):
+        await bot.send_message(chat_id, texts.TRACKER_ALREADY)
+        await send_tracker(bot, chat_id)
+        return
+    if _payments_closed(config, chat_id):
+        user.wants_purchase = True
         await session.commit()
+        await bot.send_message(chat_id, texts.PAYMENT_CLOSED)
+        return
+    if not await legal.has_offer_accept(session, user):
+        await _ask_offer_accept(bot, chat_id, config, TRACKER)
+        return
+    if config.payment_mode in {"yookassa", "stars"}:
+        await send_invoice(bot, chat_id, config, TRACKER)
+        return
+    await grant_purchase(
+        session, user, provider="test", provider_payment_id=f"test-tracker-{user.tg_id}",
+        amount=config.tracker_price_rub * 100, product=TRACKER,
+    )
+    await session.commit()
     await bot.send_message(chat_id, texts.TRACKER_PAID_OK + "\n\n" + texts.PAID_TEST_NOTE)
     await send_tracker(bot, chat_id)
 
@@ -294,7 +360,7 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
     async with sessionmaker() as session:
         s = await stats(session)
         sources = await stats_by_source(session)
-    src_lines = "\n".join(f"  {src}: пришли {n}, оплатили {p}" for src, n, p in sources)
+    src_lines = "\n".join(f"  {src}: пришли {n} → День 1: {d} → оплатили {p}" for src, n, d, p in sources)
     await message.answer(
         "<b>Воронка</b>\n"
         f"Нажали /start: {s['users']}\n"
@@ -362,3 +428,36 @@ async def cmd_history(
     for d in sorted(delivered):
         lines.append(f"— День {d}: {delivered[d].astimezone(tz):%d.%m.%Y %H:%M}")
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("forget"))
+async def cmd_forget(
+    message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    """Админ: /forget <telegram_id> — удалить данные по запросу человека (152-ФЗ).
+    Прогресс и профиль стираются; сведения об оплатах остаются (их нужно хранить по закону)."""
+    if not config.is_admin(message.from_user.id):
+        return
+    from sqlalchemy import delete, select
+
+    from bot.models import Delivery, User
+    try:
+        tg_id = int((command.args or "").strip())
+    except ValueError:
+        await message.answer("Формат: /forget 123456789 (Telegram ID)")
+        return
+    async with sessionmaker() as session:
+        user = await session.scalar(select(User).where(User.tg_id == tg_id))
+        if user is None:
+            await message.answer("Такого пользователя в базе нет.")
+            return
+        await session.execute(delete(Delivery).where(Delivery.user_id == user.id))
+        user.username = None
+        user.first_name = None
+        user.source = None
+        user.wants_purchase = False
+        await session.commit()
+    await message.answer(
+        "Удалила имя, ник, источник и прогресс. Сведения об оплатах сохранены — "
+        "их нужно хранить для налоговой. Напиши человеку, что запрос выполнен."
+    )

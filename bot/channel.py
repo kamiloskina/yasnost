@@ -68,6 +68,11 @@ def parse_post(path: Path, tz_name: str) -> Post | None:
                 buttons=buttons, poll=poll)
 
 
+def tag_url(url: str, post: "Post") -> str:
+    """?start=channel → ?start=ch1109 (месяц+день поста), чтобы в /stats было видно, какой пост привёл."""
+    return url.replace("?start=channel", f"?start=ch{post.slug[5:7]}{post.slug[8:10]}")
+
+
 def load_posts(tz_name: str, channel_dir: Path = CHANNEL_DIR) -> list[Post]:
     if not channel_dir.exists():
         return []
@@ -99,7 +104,7 @@ async def publish_due(
             markup = None
             if post.buttons:
                 markup = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text=label, url=url)] for label, url in post.buttons
+                    [InlineKeyboardButton(text=label, url=tag_url(url, post))] for label, url in post.buttons
                 ])
             try:
                 m = media.get(post.slug)

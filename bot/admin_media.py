@@ -77,7 +77,13 @@ async def cb_unmedia(call: CallbackQuery, sessionmaker: async_sessionmaker, conf
                               else "У этого поста не было голосового.")
 
 
-@router.message(Command("cancel"))
+def _admin_waiting(message: Message) -> bool:
+    from bot import admin_audio
+    uid = message.from_user.id
+    return uid in pending or uid in admin_audio.pending
+
+
+@router.message(Command("cancel"), _admin_waiting)
 async def cmd_cancel(message: Message, config: Config) -> None:
     from bot import admin_audio
     uid = message.from_user.id

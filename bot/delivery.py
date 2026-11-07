@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot import keyboards, texts
 from bot.config import Config
-from bot.content import CAPTION_LIMIT, audio_path, load_lesson
+from bot.content import audio_path, load_lesson
 from bot.models import Delivery, Purchase, User
 from bot.services import TOTAL_DAYS, delivered_map, has_paid, next_due_day
 
@@ -31,14 +31,14 @@ async def send_lesson(bot: Bot, chat_id: int, day: int) -> None:
             caption = (title + "\n\n" + texts.AUDIO_CAPTION_HINT).strip()
             if await send_cached(bot, chat_id, day, caption):
                 continue
-        audio = audio_path(day) if part.is_audio else None
-        if audio is not None:
-            caption = part.text if len(part.text) <= CAPTION_LIMIT else None
-            await bot.send_audio(chat_id, FSInputFile(audio), caption=caption)
-            if caption is None:
-                await bot.send_message(chat_id, part.text)
-        else:
-            await bot.send_message(chat_id, part.text)
+            audio = audio_path(day)
+            if audio is not None:
+                await bot.send_audio(chat_id, FSInputFile(audio), caption=caption)
+            else:
+                # Записи ещё нет: сценарий практики не отправляем — только короткое сообщение
+                await bot.send_message(chat_id, texts.audio_pending(title))
+            continue
+        await bot.send_message(chat_id, part.text)
 
 
 async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config) -> None:
