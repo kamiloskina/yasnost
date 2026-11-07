@@ -13,12 +13,14 @@ from bot.models import Delivery, LegalAction, Purchase, RefundRequest, User
 
 # Редакция документов (оферта, политика, согласие). Меняй при изменении текстов документов —
 # тогда пользователи заново подтвердят новую редакцию; ранее заключённые договоры не меняются.
-DOC_VERSION = "2026-11-07"
+DOC_VERSION = "2026-11-08"
 
 PAID_STAGES = (2, 3, 4, 5, 6, 7)
 
-PD_CONSENT = "pd_consent"
+PD_CONSENT = "pd_consent"          # редакция 2026-11-07: включала и учёт источника
 PD_WITHDRAW = "pd_withdraw"
+ANALYTICS_CONSENT = "analytics_consent"    # с 2026-11-08: отдельное согласие только на учёт источника
+ANALYTICS_WITHDRAW = "analytics_withdraw"
 FREE_ACCEPT = "free_accept"
 OFFER_ACCEPT = "offer_accept"
 
@@ -39,6 +41,12 @@ async def has_pd_consent(session: AsyncSession, user: User) -> bool:
     """Действующее согласие: последнее из (согласие, отзыв) — согласие."""
     last = await _last(session, user, (PD_CONSENT, PD_WITHDRAW))
     return last is not None and last.action == PD_CONSENT
+
+
+async def has_analytics_consent(session: AsyncSession, user: User) -> bool:
+    """Действующее согласие на учёт источника перехода (ранний pd_consent его включал)."""
+    last = await _last(session, user, (PD_CONSENT, ANALYTICS_CONSENT, PD_WITHDRAW, ANALYTICS_WITHDRAW))
+    return last is not None and last.action in (PD_CONSENT, ANALYTICS_CONSENT)
 
 
 async def has_offer_accept(session: AsyncSession, user: User) -> bool:

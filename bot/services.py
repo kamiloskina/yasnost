@@ -22,18 +22,18 @@ async def get_or_create_user(
     session: AsyncSession, tg_id: int, username: str | None, first_name: str | None, default_tz: str,
     source: str | None = None,
 ) -> User:
+    """Имя и username из профиля не сохраняются: для работы бота они не нужны (минимизация,
+    ч. 5 ст. 5 152-ФЗ). Метка источника сохраняется только с согласия (см. bot/handlers.py),
+    поэтому параметр source используется лишь вызывающим кодом, получившим согласие."""
+    now = datetime.now(timezone.utc)
     user = await session.scalar(select(User).where(User.tg_id == tg_id))
     if user is None:
-        user = User(
-            tg_id=tg_id, username=username, first_name=first_name, timezone=default_tz,
-            source=source,
-        )
+        user = User(tg_id=tg_id, timezone=default_tz, source=source, last_activity_at=now)
         session.add(user)
         await session.flush()
     else:
-        user.username = username
-        user.first_name = first_name
         user.is_blocked = False  # написала боту, значит, не заблокировала
+        user.last_activity_at = now
     return user
 
 

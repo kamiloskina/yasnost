@@ -49,7 +49,8 @@ async def on_support_message(message: Message, bot: Bot, config: Config) -> None
     body = escape(message.text or message.caption or "(вложение — ниже)")
     header = (
         f"📩 Обращение #id{uid}\nОт: {who}\n\n{body}\n\n"
-        "<i>Ответь на это сообщение (reply) — ответ уйдёт человеку от имени бота.</i>"
+        "<i>Ответь на это сообщение (reply) — ответ уйдёт человеку от имени бота. "
+        "Когда вопрос решён — ответь на него командой /close, и бот удалит обращение из этого чата.</i>"
     )
     delivered = False
     for admin_id in config.admin_ids:
@@ -71,9 +72,25 @@ def _support_target(message: Message) -> int | None:
     return int(m.group(1)) if m else None
 
 
+@router.message(Command("close"), F.reply_to_message, lambda m: _support_target(m) is not None)
+async def on_admin_close(message: Message, bot: Bot, config: Config) -> None:
+    """Админ: /close ответом на обращение — удалить его из чата (срок хранения — политика, разд. 8)."""
+    if not config.is_admin(message.from_user.id):
+        return
+    ok = True
+    for mid in (message.reply_to_message.message_id, message.message_id):
+        try:
+            await bot.delete_message(message.chat.id, mid)
+        except Exception:
+            ok = False
+    if not ok:
+        await message.answer("Не все сообщения удалось удалить (Telegram ограничивает удаление старых "
+                             "сообщений). Удали обращение вручную: долгое нажатие → «Удалить».")
+
+
 @router.message(F.reply_to_message, lambda m: _support_target(m) is not None)
 async def on_admin_reply(message: Message, bot: Bot, config: Config) -> None:
-    if not config.is_admin(message.from_user.id):
+    if not config.is_admin(message.from_user.id) or (message.text or "").startswith("/"):
         return
     target = _support_target(message)
     try:

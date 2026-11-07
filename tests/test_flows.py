@@ -27,6 +27,7 @@ from bot.services import delivered_map
 from bot.payments import PAYLOAD, invoice_params
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
+from bot.privacy import router as privacy_router
 from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as pay_router
@@ -68,13 +69,15 @@ class Harness:
         self.session = FakeSession()
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
-        for r in (pay_router, audio_router, media_router, support_router, refunds_router, main_router):
+        for r in (pay_router, audio_router, media_router, support_router, refunds_router, privacy_router,
+                  main_router):
             r._parent_router = None  # роутеры модульные: отвязываем от прошлого теста
         self.dp.include_router(pay_router)
         self.dp.include_router(audio_router)
         self.dp.include_router(media_router)
         self.dp.include_router(support_router)
         self.dp.include_router(refunds_router)
+        self.dp.include_router(privacy_router)
         self.dp.include_router(main_router)
         self.sm = sm
         self.n = 0
@@ -245,13 +248,19 @@ def test_clean_source():
 
 
 async def test_source_saved_once_and_shown_in_stats(sm):
-    h = Harness(BASE, sm)
-    await h.text("/start reels_01")
+    h = Harness(BASE, sm, auto_legal=False)
+    calls = await h.text("/start reels_01")
+    assert any("Можно я запомню" in t for t in texts_of(calls))
+    async with sm() as s:
+        assert (await s.scalar(select(User))).source is None  # без согласия метка не хранится
+    await h.click("consent")
     await h.text("/start channel")  # повторный старт не перезаписывает источник
     async with sm() as s:
         assert (await s.scalar(select(User))).source == "reels_01"
     calls = await h.text("/stats", uid=ADMIN)
-    assert any("reels_01: пришли 1 → День 1: 0 → оплатили 0" in t for t in texts_of(calls))
+    t = texts_of(calls)[0]
+    assert "reels_01: пришли 1 → День 1: 0 → оплатили 0" in t
+    assert "reels_01: 1" in t and "channel: 1" in t  # обезличенные переходы
 
 
 # ---------- автопостинг ----------
@@ -351,8 +360,8 @@ async def test_buy_tracker_separately_test_mode(sm):
     calls = await h.click("buy:tracker")
     assert len(docs_of(calls)) == 1
     async with sm() as s:
-        u = await s.scalar(select(User))
-        assert u.source == "tracker"
+        from bot.models import SourceCounter
+        assert (await s.scalar(select(SourceCounter))).source == "tracker"
     # курс при этом не открыт
     calls = await h.text("/next")
     assert len(docs_of(calls)) == 0
@@ -657,14 +666,15 @@ async def test_regular_user_reply_is_not_relayed(sm):
 async def test_forget_keeps_payments(sm):
     h = Harness(TESTER, sm)
     await h.text("/start reels_01")
+    await h.click("consent")
     await h.click("day1")
     await h.click("buy")
     calls = await h.text(f"/forget {BUYER}", uid=ADMIN)
-    assert any("Удалила" in t for t in texts_of(calls))
+    assert any("выполнено" in t and "Сохраняем" in t for t in texts_of(calls))
     async with sm() as s:
         u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        assert u.first_name is None and u.source is None
-        assert await delivered_map(s, u) == {}
+        assert u.source is None and u.first_name is None
+        assert 1 in await delivered_map(s, u)  # путь оплачен и ещё исполняется — прогресс нужен
         assert len(list(await s.scalars(select(Purchase)))) == 1
     assert await h.text(f"/forget {BUYER}", uid=777) == []
 
@@ -679,6 +689,7 @@ async def test_channel_buttons_get_per_post_tag(sm, tmp_path):
     url = h.session.calls[-1].reply_markup.inline_keyboard[0][0].url
     assert url == "https://t.me/Clarity7DaysBot?start=ch1109"
     await h.text("/start ch1109")
+    await h.click("consent")
     await h.click("day1")
     calls = await h.text("/stats", uid=ADMIN)
     assert any("ch1109: пришли 1 → День 1: 1 → оплатили 0" in t for t in texts_of(calls))

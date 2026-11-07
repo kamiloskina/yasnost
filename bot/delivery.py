@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
@@ -112,6 +112,19 @@ async def deliver_if_due(
     return None
 
 
+_last_purge: datetime | None = None
+
+
+def _purge_due() -> bool:
+    """Очистка по срокам хранения — раз в сутки (и при запуске)."""
+    global _last_purge
+    now = datetime.now(timezone.utc)
+    if _last_purge is None or now - _last_purge >= timedelta(days=1):
+        _last_purge = now
+        return True
+    return False
+
+
 async def run_scheduler(
     bot: Bot, sessionmaker: async_sessionmaker, config: Config, interval: int = 60
 ) -> None:
@@ -133,6 +146,11 @@ async def run_scheduler(
                     user = await session.get(User, uid)
                     if user is not None:
                         await deliver_if_due(bot, session, user, config)
+            if _purge_due():
+                from bot.privacy import purge_expired
+                async with sessionmaker() as session:
+                    result = await purge_expired(session)
+                log.info("retention purge: %s", result)
             if config.autopost:
                 from bot.channel import publish_due
                 await publish_due(bot, sessionmaker, config)

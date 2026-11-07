@@ -11,6 +11,7 @@ log = logging.getLogger(__name__)
 # create_all не меняет существующие таблицы, поэтому добавляем их сами.
 MIGRATIONS = [
     ("purchases", "product", "VARCHAR(16) NOT NULL DEFAULT 'course'"),
+    ("users", "last_activity_at", "TIMESTAMP"),
 ]
 
 

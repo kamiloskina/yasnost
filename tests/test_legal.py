@@ -33,17 +33,12 @@ async def test_start_is_not_consent_or_acceptance(sm):
     assert await actions(sm) == []
 
 
-async def test_day1_requires_separate_consent_then_free(sm):
+async def test_day1_is_free_and_needs_no_consent(sm):
     h = Harness(BASE, sm, auto_legal=False)
-    calls = await h.click("day1")
-    msg = [c for c in calls if isinstance(c, SendMessage)][0]
-    assert "согласие" in msg.text and msg.reply_markup.inline_keyboard[0][0].callback_data == "consent"
-    assert await actions(sm) == []  # ничего не отмечено заранее
-    await h.click("consent")
     calls = await h.click("day1")
     assert any("День 1." in t for t in texts_of(calls))
     acts = await actions(sm)
-    assert ("pd_consent", legal.DOC_VERSION, None) in acts and ("free_accept", legal.DOC_VERSION, None) in acts
+    assert acts == [("free_accept", legal.DOC_VERSION, None)]  # согласие не навязывается
     async with sm() as s:
         assert list(await s.scalars(select(Purchase))) == []  # День 1 — без оплаты
 
@@ -169,33 +164,6 @@ async def test_return_nothing_without_payment(sm):
 
 # ---------- отзыв согласия ----------
 
-async def test_withdraw_consent_without_payment(sm):
-    h = Harness(BASE, sm)
-    await h.text("/start reels_01")
-    await h.click("day1")
-    calls = await h.text("/privacy")
-    assert any("действует" in t for t in texts_of(calls))
-    await h.click("withdraw")
-    async with sm() as s:
-        u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        assert u.first_name is None and u.source is None and await delivered_map(s, u) == {}
-        assert await legal.has_pd_consent(s, u) is False
-    h.auto_legal = False
-    calls = await h.click("day1")
-    assert any("согласие" in t for t in texts_of(calls))  # снова нужно согласие
-
-
-async def test_withdraw_keeps_progress_of_paid_course(sm):
-    h = Harness(TESTER, sm)
-    await h.click("day1")
-    await h.click("buy")
-    await h.click("withdraw")
-    async with sm() as s:
-        u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        assert 1 in await delivered_map(s, u)  # основание — договор
-        assert len(list(await s.scalars(select(Purchase)))) == 1
-
-
 # ---------- согласованность документов и интерфейса ----------
 
 def test_documents_consistent_with_product():
@@ -207,7 +175,8 @@ def test_documents_consistent_with_product():
         assert "141" not in doc
     assert "990" in offer and "165" in offer and "День 1" in offer and "бесплатн" in offer
     assert "3 (трёх)" not in offer and "трёх календарных" not in offer  # нет срока «3 дня» на отказ
-    assert legal.DOC_VERSION == "2026-11-07" and "07.11.2026" in offer and "07.11.2026" in consent
+    assert legal.DOC_VERSION == "2026-11-08"
+    assert "08.11.2026" in privacy and "08.11.2026" in consent and "2026-11-08" in offer
 
 
 def test_bot_texts_match_offer():

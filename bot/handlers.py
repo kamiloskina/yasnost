@@ -45,7 +45,16 @@ async def cmd_start(
 ) -> None:
     source = _clean_source(command.args)
     async with sessionmaker() as session:
-        user = await _user(session, message.from_user, config, source)
+        user = await _user(session, message.from_user, config)
+        if source:
+            # Обезличенный счётчик переходов — без связи с пользователем
+            await count_source(session, source)
+            ask_analytics = user.source is None and not await legal.has_analytics_consent(session, user)
+            await session.commit()
+            if ask_analytics:
+                pending_sources[message.from_user.id] = source
+        else:
+            ask_analytics = False
         if source and source.startswith("tracker"):
             # Ссылка из канала на трекер: t.me/Clarity7DaysBot?start=tracker
             await offer_tracker(message.bot, session, user, config)
@@ -53,7 +62,12 @@ async def cmd_start(
         delivered = await delivered_map(session, user)
         paid = await has_paid(session, user)
     if not delivered:
-        await message.answer(texts.WELCOME, reply_markup=keyboards.welcome())
+        await message.answer(texts.welcome(config), reply_markup=keyboards.welcome())
+        if ask_analytics:
+            await message.answer(
+                texts.analytics_ask(config),
+                reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_ANALYTICS, callback_data="consent")]]),
+            )
         return
     done = len(delivered)
     if done >= TOTAL_DAYS:
@@ -81,12 +95,7 @@ async def cb_day1(
     await call.answer()
     async with sessionmaker() as session:
         user = await _user(session, call.from_user, config)
-        if not await legal.has_pd_consent(session, user):
-            await bot.send_message(
-                call.from_user.id, texts.consent_request(config),
-                reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_CONSENT, callback_data="consent")]]),
-            )
-            return
+        # День 1 выдаётся по договору (п. 5 ч. 1 ст. 6 152-ФЗ), согласие для этого не требуется
         delivered = await delivered_map(session, user)
         if 1 not in delivered:
             await legal.record(session, user, legal.FREE_ACCEPT)
@@ -96,16 +105,35 @@ async def cb_day1(
         await call.message.answer(texts.DAY1_ALREADY, reply_markup=keyboards.my_days_only())
 
 
+# Метка перехода до решения пользователя хранится только в памяти процесса
+pending_sources: dict[int, str] = {}
+
+
+async def count_source(session: AsyncSession, source: str) -> None:
+    from sqlalchemy import select
+
+    from bot.models import SourceCounter
+    row = await session.scalar(select(SourceCounter).where(SourceCounter.source == source))
+    if row is None:
+        session.add(SourceCounter(source=source, starts=1))
+    else:
+        row.starts += 1
+
+
 @router.callback_query(F.data == "consent")
 async def cb_consent(call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config) -> None:
-    """Отдельное действие: согласие на обработку ПДн (152-ФЗ, ст. 9). Не отмечено заранее."""
+    """Отдельное необязательное согласие только на учёт источника перехода (ст. 9 152-ФЗ).
+    На доступ к курсу не влияет. Кнопка не отмечена заранее."""
     await call.answer()
     async with sessionmaker() as session:
         user = await _user(session, call.from_user, config)
-        if not await legal.has_pd_consent(session, user):
-            await legal.record(session, user, legal.PD_CONSENT)
-            await session.commit()
-    await bot.send_message(call.from_user.id, texts.CONSENT_THANKS, reply_markup=keyboards.about())
+        if not await legal.has_analytics_consent(session, user):
+            await legal.record(session, user, legal.ANALYTICS_CONSENT)
+        src = pending_sources.pop(call.from_user.id, None)
+        if src and user.source is None:
+            user.source = src
+        await session.commit()
+    await bot.send_message(call.from_user.id, texts.ANALYTICS_THANKS)
 
 
 def _when_text(prev_at: datetime, tz_name: str, hour: int, now: datetime) -> str:
@@ -357,9 +385,14 @@ async def cmd_reset(message: Message, sessionmaker: async_sessionmaker, config: 
 async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
     if message.from_user.id not in config.admin_ids:
         return
+    from sqlalchemy import select
+
+    from bot.models import SourceCounter
     async with sessionmaker() as session:
         s = await stats(session)
-        sources = await stats_by_source(session)
+        sources = [x for x in await stats_by_source(session) if x[0] != "—"]
+        counters = list(await session.scalars(select(SourceCounter).order_by(SourceCounter.starts.desc())))
+    clicks = "\n".join(f"  {c.source}: {c.starts}" for c in counters)
     src_lines = "\n".join(f"  {src}: пришли {n} → День 1: {d} → оплатили {p}" for src, n, d, p in sources)
     await message.answer(
         "<b>Воронка</b>\n"
@@ -371,7 +404,8 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
         f"Получили трекер в подарок: {s['tracker_gift']}\n"
         f"Прошли все 7 дней: {s['completed']}\n"
         f"Заблокировали бота: {s['blocked']}\n\n"
-        f"<b>Источники</b> (?start=…)\n{src_lines or '  пока нет'}"
+        f"<b>Переходы по ссылкам</b> (все, обезличенно)\n{clicks or '  пока нет'}\n\n"
+        f"<b>Воронка по источникам</b> (только согласившиеся на учёт)\n{src_lines or '  пока нет'}"
     )
 
 
@@ -412,8 +446,8 @@ async def cmd_history(
             select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.created_at)
         ))
         delivered = await delivered_map(session, user)
-    name = f"@{user.username}" if user.username else (user.first_name or str(tg_id))
-    lines = [f"<b>{name}</b> (ID {tg_id})", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"
+    name = f"Пользователь {tg_id}"
+    lines = [f"<b>{name}</b>", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"
              + (f", источник: {user.source}" if user.source else "")]
     lines.append("\n<b>Оплаты</b>")
     if not purchases:
@@ -434,30 +468,25 @@ async def cmd_history(
 async def cmd_forget(
     message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
-    """Админ: /forget <telegram_id> — удалить данные по запросу человека (152-ФЗ).
-    Прогресс и профиль стираются; сведения об оплатах остаются (их нужно хранить по закону)."""
+    """Админ: /forget <telegram_id> — требование удалить данные, полученное вне бота (например, по почте).
+    Та же процедура, что «Удалить мои данные» в /privacy: регистрация обращения и удаление всего,
+    для чего нет иного основания (ст. 20, 21 152-ФЗ)."""
     if not config.is_admin(message.from_user.id):
         return
-    from sqlalchemy import delete, select
+    from sqlalchemy import select
 
-    from bot.models import Delivery, User
+    from bot import privacy
+    from bot.models import User
     try:
         tg_id = int((command.args or "").strip())
     except ValueError:
         await message.answer("Формат: /forget 123456789 (Telegram ID)")
         return
     async with sessionmaker() as session:
+        req = await privacy.register(session, tg_id, "destroy")
         user = await session.scalar(select(User).where(User.tg_id == tg_id))
-        if user is None:
-            await message.answer("Такого пользователя в базе нет.")
-            return
-        await session.execute(delete(Delivery).where(Delivery.user_id == user.id))
-        user.username = None
-        user.first_name = None
-        user.source = None
-        user.wants_purchase = False
+        result = await privacy.destroy(session, user) if user else "Данных о пользователе в боте нет."
+        privacy.complete(req, result)
         await session.commit()
-    await message.answer(
-        "Удалила имя, ник, источник и прогресс. Сведения об оплатах сохранены — "
-        "их нужно хранить для налоговой. Напиши человеку, что запрос выполнен."
-    )
+        n = req.id
+    await message.answer(f"Обращение №{n} выполнено. {result}\n\nСообщи человеку результат в течение срока ответа.")

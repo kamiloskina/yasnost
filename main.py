@@ -16,6 +16,7 @@ from bot.delivery import run_scheduler
 from bot.handlers import router
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
+from bot.privacy import router as privacy_router
 from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as payments_router
@@ -93,6 +94,9 @@ async def main() -> None:
     if config.payment_mode == "stars":
         logging.warning("PAYMENT_MODE=stars: Telegram returns Stars only in full, partial refunds "
                         "under the offer are impossible — the offer must be updated first (LEGAL_REVIEW)")
+    if not config.privacy_url:
+        logging.warning("PRIVACY_URL is not set: the privacy policy must be publicly available "
+                        "before processing personal data (art. 18.1 152-FZ)")
     if not config.admin_ids:
         logging.warning("ADMIN_IDS is empty: admin commands and test access are disabled")
     dp = Dispatcher(config=config, sessionmaker=sessionmaker)
@@ -101,6 +105,7 @@ async def main() -> None:
     dp.include_router(media_router)
     dp.include_router(support_router)
     dp.include_router(refunds_router)
+    dp.include_router(privacy_router)
     dp.include_router(router)
 
     health = await start_health_server()

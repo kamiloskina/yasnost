@@ -16,13 +16,13 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 from aiogram.types import InlineKeyboardButton as Btn
 from aiogram.types import InlineKeyboardMarkup as Kb
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot import legal, texts
 from bot.config import Config
-from bot.models import Delivery, Purchase, RefundRequest, User
-from bot.services import COURSE, TRACKER, get_or_create_user, has_paid
+from bot.models import Purchase, RefundRequest, User
+from bot.services import COURSE, TRACKER, get_or_create_user
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -71,7 +71,7 @@ async def _register_and_notify(bot: Bot, session: AsyncSession, user: User, purc
         except Exception as e:
             log.exception("stars refund failed for request %s", req.id)
             await _notify_admins(bot, config, f"⚠️ Возврат №{req.id}: Telegram не вернул звёзды: {e}")
-    who = f"@{user.username}" if user.username else (user.first_name or str(user.tg_id))
+    who = f"ID {user.tg_id}"
     paid = legal.fmt_amount(purchase.amount, purchase.currency)
     how = {
         "yookassa": "Верни сумму в личном кабинете ЮKassa, затем скорректируй чек в «Мой налог».",
@@ -79,7 +79,7 @@ async def _register_and_notify(bot: Bot, session: AsyncSession, user: User, purc
     }.get(purchase.provider, "Тестовая покупка — деньги не списывались.")
     await _notify_admins(
         bot, config,
-        f"🧾 Заявление на возврат №{req.id}\nОт: {who} (ID {user.tg_id})\n"
+        f"🧾 Заявление на возврат №{req.id}\nОт: {who}\n"
         f"Оплачено: {paid}, способ: {purchase.provider}\n"
         f"Направлено платных этапов: {req.stages_provided} из 6\nК возврату по оферте: {due}\n\n"
         f"{how}\nПосле возврата: /refund_done {req.id}  (или /refund_done {req.id} <сумма ₽>, "
@@ -125,38 +125,6 @@ async def cb_return_confirm(call: CallbackQuery, bot: Bot, sessionmaker: async_s
         if req.status == "registered":
             await bot.send_message(call.from_user.id,
                                    texts.return_registered(req.id, legal.fmt_amount(req.amount_due, req.currency)))
-
-
-@router.message(Command("privacy"))
-async def cmd_privacy(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
-    async with sessionmaker() as session:
-        user = await _user(session, message, config)
-        consent = await legal.has_pd_consent(session, user)
-    markup = (Kb(inline_keyboard=[[Btn(text=texts.BTN_WITHDRAW, callback_data="withdraw")]])
-              if consent else None)
-    await message.answer(texts.privacy_info(consent), reply_markup=markup)
-
-
-async def erase_personal_data(session: AsyncSession, user: User) -> None:
-    """Удаляет данные, не нужные для исполнения договора и закона. Прогресс сохраняется,
-    только если оплаченный путь ещё исполняется (основание — договор, п. 5 ч. 1 ст. 6 152-ФЗ)."""
-    user.username = None
-    user.first_name = None
-    user.source = None
-    user.wants_purchase = False
-    if not await has_paid(session, user):
-        await session.execute(delete(Delivery).where(Delivery.user_id == user.id))
-
-
-@router.callback_query(F.data == "withdraw")
-async def cb_withdraw(call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config) -> None:
-    await call.answer()
-    async with sessionmaker() as session:
-        user = await _user(session, call, config)
-        await erase_personal_data(session, user)
-        await legal.record(session, user, legal.PD_WITHDRAW)
-        await session.commit()
-    await bot.send_message(call.from_user.id, texts.WITHDRAWN)
 
 
 # ---------- администратор ----------
