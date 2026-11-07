@@ -27,8 +27,8 @@ def about() -> Kb:
     return Kb(inline_keyboard=[[Btn(text=texts.BTN_START_DAY1, callback_data="day1")]])
 
 
-def offer(config: Config) -> Kb:
-    if config.payment_mode == "test":
+def offer(config: Config, user_id: int) -> Kb:
+    if config.test_access(user_id):
         label = texts.BTN_BUY_TEST
     elif config.payment_mode == "stars":
         label = texts.BTN_BUY_STARS.format(stars=config.stars_price)
@@ -55,8 +55,8 @@ def days(delivered: list[int], has_tracker: bool = False) -> Kb:
     return Kb(inline_keyboard=rows)
 
 
-def tracker_offer(config: Config) -> Kb:
-    if config.payment_mode == "test":
+def tracker_offer(config: Config, user_id: int) -> Kb:
+    if config.test_access(user_id):
         label = texts.BTN_TRACKER_BUY_TEST
     else:
         label = texts.BTN_TRACKER_BUY.format(price=texts.tracker_price_label(config))

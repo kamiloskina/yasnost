@@ -41,7 +41,7 @@ async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config
         await bot.send_message(
             chat_id,
             texts.OFFER.format(days=keyboards.days_list(2), price=texts.price_label(config)),
-            reply_markup=keyboards.offer(config),
+            reply_markup=keyboards.offer(config, chat_id),
         )
     else:
         await bot.send_message(chat_id, texts.AFTER_DAY.format(hour=config.delivery_hour))

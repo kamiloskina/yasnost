@@ -23,6 +23,7 @@ from bot.db import init_db, make_engine
 from bot.handlers import _clean_source
 from bot.handlers import router as main_router
 from bot.models import Purchase, User
+from bot.services import delivered_map
 from bot.payments import PAYLOAD, invoice_params
 from bot.admin_media import router as media_router
 from bot.payments import router as pay_router
@@ -35,6 +36,8 @@ BASE = Config(
     debug_commands=True, stars_price=650, yookassa_provider_token="381764678:TEST:1",
     channel_id="@onaotkrytaya",
 )
+# Тестовый доступ и /next — только у админов, поэтому «покупательница» в тестах полного пути — тоже админ
+TESTER = replace(BASE, admin_ids=frozenset({ADMIN, BUYER}))
 
 
 class FakeSession(BaseSession):
@@ -181,8 +184,10 @@ async def test_refund_stars_stops_access(sm):
     async with sm() as s:
         statuses = list(await s.scalars(select(Purchase.status)))
         assert statuses == ["refunded"]
-    calls = await h.text("/next")
-    assert any("после" in t for t in texts_of(calls))
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        from bot.services import has_paid
+        assert await has_paid(s, u) is False
 
 
 async def test_refund_is_admin_only(sm):
@@ -293,7 +298,7 @@ async def _finish_course(h):
 
 
 async def test_gift_after_day7_once(sm):
-    h = Harness(BASE, sm)
+    h = Harness(TESTER, sm)
     calls = await _finish_course(h)
     assert len(docs_of(calls)) == 1
     assert any("подарок" in t for t in texts_of(calls))
@@ -316,7 +321,7 @@ async def test_offer_mentions_secret_gift(sm):
 
 
 async def test_buy_tracker_separately_test_mode(sm):
-    h = Harness(BASE, sm)
+    h = Harness(TESTER, sm)
     calls = await h.text("/start tracker")
     offer = texts_of(calls)
     assert any("490 ₽" in t and "в подарок после седьмого дня" in t for t in offer)
@@ -331,7 +336,7 @@ async def test_buy_tracker_separately_test_mode(sm):
 
 
 async def test_no_duplicate_gift_if_tracker_bought(sm):
-    h = Harness(BASE, sm)
+    h = Harness(TESTER, sm)
     await h.click("buy:tracker")
     calls = await _finish_course(h)
     assert len(docs_of(calls)) == 0
@@ -364,7 +369,7 @@ async def test_tracker_stars_payment(sm):
 
 
 async def test_tracker_stats(sm):
-    h = Harness(BASE, sm)
+    h = Harness(TESTER, sm)
     await h.click("buy:tracker")
     calls = await h.text("/stats", uid=ADMIN)
     assert any("Купили трекер отдельно: 1" in t for t in texts_of(calls))
@@ -442,3 +447,40 @@ async def test_unmedia_removes_voice(sm, tmp_path):
     now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
     await publish_due(h.bot, sm, BASE, now, tmp_path)
     assert [type(c).__name__ for c in h.session.calls] == ["SendMessage"]
+
+
+
+# ---------- только администратор ----------
+
+async def test_next_and_reset_ignored_for_regular_user(sm):
+    h = Harness(BASE, sm)
+    await h.click("day1")
+    assert await h.text("/next") == []
+    assert await h.text("/reset") == []
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        assert set(await delivered_map(s, u)) == {1}
+
+
+async def test_test_access_only_for_admin(sm):
+    h = Harness(BASE, sm)  # PAYMENT_MODE=test, BUYER не админ
+    calls = await h.click("day1")
+    kb = [c for c in calls if isinstance(c, SendMessage)][-1].reply_markup
+    labels = [b.text for row in kb.inline_keyboard for b in row]
+    assert not any("тестов" in l for l in labels) and any("990 ₽" in l for l in labels)
+    calls = await h.click("buy")
+    assert any("скоро" in t for t in texts_of(calls))
+    calls = await h.click("buy:tracker")
+    assert docs_of(calls) == [] and any("скоро" in t for t in texts_of(calls))
+    async with sm() as s:
+        assert list(await s.scalars(select(Purchase))) == []
+        assert (await s.scalar(select(User).where(User.tg_id == BUYER))).wants_purchase is True
+
+
+async def test_admin_keeps_test_access_and_next(sm):
+    h = Harness(BASE, sm)
+    await h.click("day1", uid=ADMIN)
+    calls = await h.click("buy", uid=ADMIN)
+    assert any("тестовый доступ" in t for t in texts_of(calls))
+    calls = await h.text("/next", uid=ADMIN)
+    assert any("День 2." in t for t in texts_of(calls))

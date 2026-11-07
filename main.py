@@ -7,7 +7,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, BotCommandScopeChat
 from aiohttp import web
 
 from bot.config import load_config
@@ -55,7 +55,7 @@ async def main() -> None:
     if info.url:
         logging.warning("webhook was set (%s) — deleting it to use polling", info.url)
     await bot.delete_webhook(drop_pending_updates=False)
-    await bot.set_my_commands([
+    public_commands = [
         BotCommand(command="start", description="Начало и мой статус"),
         BotCommand(command="days", description="Мои дни"),
         BotCommand(command="tracker", description="Трекер на 30 дней"),
@@ -63,7 +63,24 @@ async def main() -> None:
         BotCommand(command="terms", description="Условия и возврат"),
         BotCommand(command="paysupport", description="Вопросы по оплате"),
         BotCommand(command="help", description="Помощь"),
-    ])
+    ]
+    admin_commands = public_commands + [
+        BotCommand(command="stats", description="Админ: воронка и продажи"),
+        BotCommand(command="autopost", description="Админ: автопостинг"),
+        BotCommand(command="voice", description="Админ: голосовое к посту"),
+        BotCommand(command="next", description="Админ: следующий день сразу"),
+        BotCommand(command="reset", description="Админ: сбросить мой прогресс"),
+        BotCommand(command="refund", description="Админ: возврат"),
+    ]
+    await bot.set_my_commands(public_commands)
+    # Админские команды видны в меню только администраторам
+    for admin_id in config.admin_ids:
+        try:
+            await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
+        except Exception as e:
+            logging.warning("cannot set admin menu for %s (start the bot first?): %s", admin_id, e)
+    if not config.admin_ids:
+        logging.warning("ADMIN_IDS is empty: admin commands and test access are disabled")
     dp = Dispatcher(config=config, sessionmaker=sessionmaker)
     dp.include_router(payments_router)
     dp.include_router(media_router)

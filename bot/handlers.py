@@ -59,7 +59,8 @@ async def cmd_start(
         next_line = texts.STATUS_NEED_PAY
     else:
         next_line = texts.STATUS_NEXT
-    markup = keyboards.offer(config) if (not paid and done < TOTAL_DAYS) else keyboards.my_days_only()
+    markup = (keyboards.offer(config, message.from_user.id) if (not paid and done < TOTAL_DAYS)
+              else keyboards.my_days_only())
     await message.answer(texts.STATUS.format(done=done, next_line=next_line), reply_markup=markup)
 
 
@@ -129,7 +130,9 @@ async def cb_buy(
         if await has_paid(session, user):
             await bot.send_message(chat_id, texts.ALREADY_PAID)
             return
-        if config.payment_mode == "off":
+        if config.payment_mode == "off" or (
+            config.payment_mode == "test" and not config.test_access(chat_id)
+        ):
             user.wants_purchase = True
             await session.commit()
             await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
@@ -219,7 +222,9 @@ async def cb_buy_tracker(
             await bot.send_message(chat_id, texts.TRACKER_ALREADY)
             await send_tracker(bot, chat_id)
             return
-        if config.payment_mode == "off":
+        if config.payment_mode == "off" or (
+            config.payment_mode == "test" and not config.test_access(chat_id)
+        ):
             user.wants_purchase = True
             await session.commit()
             await bot.send_message(chat_id, texts.PAYMENT_CLOSED)
@@ -247,14 +252,14 @@ async def cmd_help(message: Message) -> None:
     await message.answer(texts.HELP)
 
 
-# --- Команды для тестирования (DEBUG_COMMANDS=true) ---
+# --- Команды только для администраторов (ADMIN_IDS) ---
 
 @router.message(Command("next"))
 async def cmd_next(
     message: Message, bot: Bot, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
-    """Сразу открыть следующий день, не дожидаясь утра."""
-    if not config.debug_commands:
+    """Админ: сразу открыть следующий день, не дожидаясь утра."""
+    if not config.is_admin(message.from_user.id):
         return
     async with sessionmaker() as session:
         user = await _user(session, message.from_user, config)
@@ -272,8 +277,8 @@ async def cmd_next(
 
 @router.message(Command("reset"))
 async def cmd_reset(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
-    """Стереть свой прогресс и тестовую покупку."""
-    if not config.debug_commands:
+    """Админ: стереть свой прогресс и покупки, чтобы пройти путь заново."""
+    if not config.is_admin(message.from_user.id):
         return
     async with sessionmaker() as session:
         user = await _user(session, message.from_user, config)
