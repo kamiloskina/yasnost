@@ -16,6 +16,7 @@ from bot.delivery import run_scheduler
 from bot.handlers import router
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
+from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as payments_router
 from bot.keyboards import titles
@@ -66,6 +67,8 @@ async def main() -> None:
         BotCommand(command="restore", description="Восстановить доступ"),
         BotCommand(command="terms", description="Условия и возврат"),
         BotCommand(command="paysupport", description="Написать в поддержку"),
+        BotCommand(command="return", description="Отказ и возврат"),
+        BotCommand(command="privacy", description="Мои данные и согласие"),
         BotCommand(command="help", description="Помощь"),
     ]
     admin_commands = public_commands + [
@@ -75,7 +78,8 @@ async def main() -> None:
         BotCommand(command="audio", description="Админ: аудиопрактика дня"),
         BotCommand(command="next", description="Админ: следующий день сразу"),
         BotCommand(command="reset", description="Админ: сбросить мой прогресс"),
-        BotCommand(command="refund", description="Админ: возврат"),
+        BotCommand(command="refund", description="Админ: зарегистрировать возврат"),
+        BotCommand(command="refund_done", description="Админ: возврат выполнен"),
         BotCommand(command="history", description="Админ: история пользователя"),
         BotCommand(command="forget", description="Админ: удалить данные пользователя"),
     ]
@@ -86,6 +90,9 @@ async def main() -> None:
             await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
         except Exception as e:
             logging.warning("cannot set admin menu for %s (start the bot first?): %s", admin_id, e)
+    if config.payment_mode == "stars":
+        logging.warning("PAYMENT_MODE=stars: Telegram returns Stars only in full, partial refunds "
+                        "under the offer are impossible — the offer must be updated first (LEGAL_REVIEW)")
     if not config.admin_ids:
         logging.warning("ADMIN_IDS is empty: admin commands and test access are disabled")
     dp = Dispatcher(config=config, sessionmaker=sessionmaker)
@@ -93,6 +100,7 @@ async def main() -> None:
     dp.include_router(audio_router)
     dp.include_router(media_router)
     dp.include_router(support_router)
+    dp.include_router(refunds_router)
     dp.include_router(router)
 
     health = await start_health_server()

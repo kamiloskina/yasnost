@@ -46,6 +46,7 @@ class Config:
     stars_price: int = 0
     offer_url: str = ""
     privacy_url: str = ""
+    consent_url: str = ""
     support_contact: str = ""
     channel_id: str = ""
     autopost: bool = False
@@ -80,6 +81,13 @@ def load_config() -> Config:
     tracker_stars_price = int(os.getenv("TRACKER_STARS_PRICE", "0") or 0)
     if payment_mode == "stars" and tracker_stars_price <= 0:
         raise SystemExit("Для PAYMENT_MODE=stars задай TRACKER_STARS_PRICE — цену трекера в звёздах")
+    if payment_mode in {"yookassa", "stars"}:
+        missing = [n for n in ("OFFER_URL", "PRIVACY_URL", "CONSENT_URL") if not os.getenv(n, "").strip()]
+        if missing:
+            raise SystemExit(
+                "Для приёма оплаты покупатель должен видеть документы до оплаты (ст. 8–10 ЗоЗПП). "
+                "Задай переменные: " + ", ".join(missing)
+            )
     autopost = _bool("AUTOPOST", False)
     channel_id = os.getenv("CHANNEL_ID", "").strip()
     if autopost and not channel_id:
@@ -101,6 +109,7 @@ def load_config() -> Config:
         stars_price=stars_price,
         offer_url=os.getenv("OFFER_URL", "").strip(),
         privacy_url=os.getenv("PRIVACY_URL", "").strip(),
+        consent_url=os.getenv("CONSENT_URL", "").strip(),
         support_contact=os.getenv("SUPPORT_CONTACT", "").strip(),
         channel_id=channel_id,
         autopost=autopost,

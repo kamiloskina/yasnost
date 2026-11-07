@@ -83,3 +83,36 @@ class LessonAudio(Base):
     kind: Mapped[str] = mapped_column(String(16))  # audio | voice | document
     file_id: Mapped[str] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LegalAction(Base):
+    """Юридически значимые действия пользователя: доказательство волеизъявления.
+
+    action: pd_consent — согласие на обработку ПДн; pd_withdraw — отзыв согласия;
+    free_accept — начало бесплатной части (День 1); offer_accept — акцепт платной части
+    (переход к оплате). doc_version — редакция документов на момент действия.
+    """
+    __tablename__ = "legal_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(32))
+    doc_version: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RefundRequest(Base):
+    """Заявление об отказе от договора и возврате. Одно открытое заявление на покупку."""
+    __tablename__ = "refund_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    purchase_id: Mapped[int] = mapped_column(ForeignKey("purchases.id"), index=True)
+    stages_provided: Mapped[int] = mapped_column(Integer)  # платные этапы, материалы которых направлены
+    amount_due: Mapped[int] = mapped_column(Integer)       # расчёт по оферте, в копейках / звёздах
+    final_amount: Mapped[int | None] = mapped_column(Integer)  # фактически возвращено
+    currency: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(16), default="registered")  # registered | completed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

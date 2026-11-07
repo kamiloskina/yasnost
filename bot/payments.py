@@ -9,7 +9,7 @@ import json
 import logging
 
 from aiogram import Bot, F, Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command
 from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -17,14 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from bot import texts
 from bot.config import Config
 from bot.models import User
-from datetime import datetime, timezone
-
-from bot.services import (
-    COURSE, TOTAL_DAYS, TRACKER, as_utc, delivered_map, get_or_create_user, grant_purchase,
-    has_paid, refund_user,
-)
-
-REFUND_WINDOW_DAYS = 3
+from bot.services import COURSE, TRACKER, get_or_create_user, grant_purchase, has_paid
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -99,6 +92,10 @@ async def on_pre_checkout(
         if user is not None and await has_paid(session, user, product):
             await query.answer(ok=False, error_message=texts.ALREADY_PAID_SHORT)
             return
+        from bot import legal
+        if user is None or not await legal.has_offer_accept(session, user):
+            await query.answer(ok=False, error_message=texts.OFFER_NOT_ACCEPTED)
+            return
     await query.answer(ok=True)
 
 
@@ -137,72 +134,6 @@ async def on_successful_payment(
             await send_tracker(bot, message.chat.id)
             return
         await after_payment(bot, session, user, config, message.chat.id, test=False)
-
-
-@router.message(Command("refund"))
-async def cmd_refund(
-    message: Message, command: CommandObject, bot: Bot, sessionmaker: async_sessionmaker,
-    config: Config,
-) -> None:
-    """Админ: /refund <telegram_id> [tracker] — вернуть оплату (по умолчанию за курс)."""
-    if message.from_user.id not in config.admin_ids:
-        return
-    parts = (command.args or "").split()
-    try:
-        tg_id = int(parts[0])
-        product = TRACKER if len(parts) > 1 and parts[1].lower() == TRACKER else COURSE
-    except (ValueError, IndexError):
-        await message.answer("Формат: /refund 123456789 — курс, /refund 123456789 tracker — трекер")
-        return
-    async with sessionmaker() as session:
-        user = await session.scalar(select(User).where(User.tg_id == tg_id))
-        if user is None:
-            await message.answer("Такого пользователя в базе нет.")
-            return
-        delivered = await delivered_map(session, user)
-        purchases = [p for p in await refund_user(session, user, product) if p.provider != "gift"]
-        if not purchases:
-            await message.answer("Оплаченных покупок у пользователя нет.")
-            return
-        notes = []
-        if product == COURSE:
-            paid_days = TOTAL_DAYS - 1
-            opened = len([d for d in delivered if d > 1])
-            unopened = max(paid_days - opened, 0)
-            for p in purchases:
-                if p.currency == "RUB":
-                    due = p.amount / 100 * unopened / paid_days
-                    notes.append(
-                        f"Открыто платных дней: {opened} из {paid_days}. По оферте вернуть "
-                        f"{due:.0f} ₽ из {p.amount / 100:.0f} ₽ (за {unopened} неоткрытых дн.)."
-                    )
-                age = datetime.now(timezone.utc) - as_utc(p.created_at)
-                if age.days >= REFUND_WINDOW_DAYS:
-                    notes.append(f"⚠️ С оплаты прошло {age.days} дн. — больше {REFUND_WINDOW_DAYS}, "
-                                 "по оферте возврат не положен (решение за тобой).")
-        for p in purchases:
-            if p.provider == "stars":
-                try:
-                    await bot.refund_star_payment(tg_id, p.provider_payment_id)
-                    notes.append(f"Звёзды ({p.amount}) возвращены автоматически.")
-                except Exception as e:  # уже возвращено или ошибка Telegram
-                    await session.rollback()
-                    await message.answer(f"Telegram не принял возврат звёзд: {e}")
-                    return
-            elif p.provider == "yookassa":
-                notes.append(
-                    "Оплата ЮKassa помечена как возвращённая. Сам возврат денег (сумма выше) "
-                    "сделай в личном кабинете ЮKassa."
-                )
-            else:
-                notes.append(f"Покупка «{p.provider}» помечена как возвращённая.")
-        await session.commit()
-    tail = "\nВыдача следующих дней остановлена." if product == COURSE else ""
-    await message.answer("\n".join(notes) + tail)
-    try:
-        await bot.send_message(tg_id, texts.REFUNDED)
-    except Exception:
-        log.info("could not notify %s about refund", tg_id)
 
 
 @router.message(Command("terms"))

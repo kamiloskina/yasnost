@@ -27,6 +27,7 @@ from bot.services import delivered_map
 from bot.payments import PAYLOAD, invoice_params
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
+from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as pay_router
 
@@ -61,17 +62,19 @@ class FakeSession(BaseSession):
 
 
 class Harness:
-    def __init__(self, config, sm):
+    def __init__(self, config, sm, auto_legal=True):
+        self.auto_legal = auto_legal
         self.config = config
         self.session = FakeSession()
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
-        for r in (pay_router, audio_router, media_router, support_router, main_router):
+        for r in (pay_router, audio_router, media_router, support_router, refunds_router, main_router):
             r._parent_router = None  # роутеры модульные: отвязываем от прошлого теста
         self.dp.include_router(pay_router)
         self.dp.include_router(audio_router)
         self.dp.include_router(media_router)
         self.dp.include_router(support_router)
+        self.dp.include_router(refunds_router)
         self.dp.include_router(main_router)
         self.sm = sm
         self.n = 0
@@ -85,6 +88,18 @@ class Harness:
         await self.dp.feed_update(self.bot, Update(update_id=self.n, **kw))
         return self.session.calls
 
+    async def ensure_legal(self, uid, consent=True, offer=True):
+        """Согласие и акцепт, как если бы пользователь уже нажал соответствующие кнопки."""
+        from bot import legal
+        from bot.services import get_or_create_user
+        async with self.sm() as s:
+            u = await get_or_create_user(s, uid, None, "Аня", "Europe/Moscow")
+            if consent and not await legal.has_pd_consent(s, u):
+                await legal.record(s, u, legal.PD_CONSENT)
+            if offer and not await legal.has_offer_accept(s, u):
+                await legal.record(s, u, legal.OFFER_ACCEPT)
+            await s.commit()
+
     def _msg(self, uid, **kw):
         return Message(message_id=self.n + 1, date=datetime.now(), chat=Chat(id=uid, type="private"),
                        from_user=self._user(uid), **kw)
@@ -93,11 +108,15 @@ class Harness:
         return await self.feed(message=self._msg(uid, text=t))
 
     async def click(self, data, uid=BUYER):
+        if self.auto_legal and data in ("day1", "buy", "buy:tracker"):
+            await self.ensure_legal(uid)
         m = self._msg(uid, text="x")
         return await self.feed(callback_query=CallbackQuery(
             id=str(self.n), from_user=self._user(uid), chat_instance="c", message=m, data=data))
 
     async def pre_checkout(self, uid=BUYER, payload=PAYLOAD):
+        if self.auto_legal:
+            await self.ensure_legal(uid)
         return await self.feed(pre_checkout_query=PreCheckoutQuery(
             id="pc", from_user=self._user(uid), currency="XTR", total_amount=650,
             invoice_payload=payload))
@@ -354,6 +373,7 @@ async def test_tracker_stars_payment(sm):
     calls = await h.click("buy:tracker")
     inv = [c for c in calls if isinstance(c, SendInvoice)]
     assert inv and inv[0].payload == TRACKER_PAYLOAD and inv[0].prices[0].amount == 320
+    await h.ensure_legal(BUYER)
     calls = await h.feed(pre_checkout_query=PreCheckoutQuery(
         id="pc", from_user=h._user(BUYER), currency="XTR", total_amount=320,
         invoice_payload=TRACKER_PAYLOAD))
@@ -568,16 +588,16 @@ async def test_refund_suggests_prorated_amount(sm):
     h = Harness(cfg, sm)
     await h.click("day1")
     await h.paid("yk-1", currency="RUB", amount=99000)
-    await h.text("/next")  # день 2 (если ещё не пришёл)
+    await h.text("/next")
     await h.text("/next")
     async with sm() as s:
         u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        opened = len([d for d in await delivered_map(s, u) if d > 1])
+        stages = len([d for d in await delivered_map(s, u) if d > 1])
     calls = await h.text(f"/refund {BUYER}", uid=ADMIN)
-    due = round(990 * (6 - opened) / 6)
-    assert any(f"Открыто платных дней: {opened} из 6. По оферте вернуть {due} ₽" in t
-               for t in texts_of(calls)), texts_of(calls)
-
+    due = 990 - 165 * stages
+    admin_msgs = [t for c in calls if isinstance(c, SendMessage) and c.chat_id == ADMIN for t in [c.text]]
+    assert any(f"Направлено платных этапов: {stages} из 6" in t and f"К возврату по оферте: {due} ₽" in t
+               for t in admin_msgs), admin_msgs
 
 
 async def test_history_shows_payments_and_delivery_times(sm):
