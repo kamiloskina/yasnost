@@ -14,6 +14,7 @@ from bot.config import load_config
 from bot.db import init_db, make_engine
 from bot.delivery import run_scheduler
 from bot.handlers import router
+from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
 from bot.payments import router as payments_router
 from bot.keyboards import titles
@@ -46,6 +47,8 @@ async def main() -> None:
 
     engine = make_engine(config.database_url)
     sessionmaker = await init_db(engine)
+    from bot.lesson_audio import load_cache
+    await load_cache(sessionmaker)
 
     bot = Bot(config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     # Проверка токена и сброс вебхука: если старая версия бота принимала сообщения через вебхук,
@@ -68,6 +71,7 @@ async def main() -> None:
         BotCommand(command="stats", description="Админ: воронка и продажи"),
         BotCommand(command="autopost", description="Админ: автопостинг"),
         BotCommand(command="voice", description="Админ: голосовое к посту"),
+        BotCommand(command="audio", description="Админ: аудиопрактика дня"),
         BotCommand(command="next", description="Админ: следующий день сразу"),
         BotCommand(command="reset", description="Админ: сбросить мой прогресс"),
         BotCommand(command="refund", description="Админ: возврат"),
@@ -83,6 +87,7 @@ async def main() -> None:
         logging.warning("ADMIN_IDS is empty: admin commands and test access are disabled")
     dp = Dispatcher(config=config, sessionmaker=sessionmaker)
     dp.include_router(payments_router)
+    dp.include_router(audio_router)
     dp.include_router(media_router)
     dp.include_router(router)
 

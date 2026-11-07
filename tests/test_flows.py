@@ -25,6 +25,7 @@ from bot.handlers import router as main_router
 from bot.models import Purchase, User
 from bot.services import delivered_map
 from bot.payments import PAYLOAD, invoice_params
+from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
 from bot.payments import router as pay_router
 
@@ -64,9 +65,10 @@ class Harness:
         self.session = FakeSession()
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
-        for r in (pay_router, media_router, main_router):  # отвязываем от прошлого теста
+        for r in (pay_router, audio_router, media_router, main_router):  # отвязываем от прошлого теста
             r._parent_router = None
         self.dp.include_router(pay_router)
+        self.dp.include_router(audio_router)
         self.dp.include_router(media_router)
         self.dp.include_router(main_router)
         self.sm = sm
@@ -484,3 +486,90 @@ async def test_admin_keeps_test_access_and_next(sm):
     assert any("тестовый доступ" in t for t in texts_of(calls))
     calls = await h.text("/next", uid=ADMIN)
     assert any("День 2." in t for t in texts_of(calls))
+
+
+
+# ---------- аудиопрактики через /audio ----------
+
+@pytest.fixture(autouse=True)
+def _clear_audio_state():
+    from bot import admin_audio, admin_media, lesson_audio
+    lesson_audio.CACHE.clear(); admin_audio.pending.clear(); admin_media.pending.clear()
+    yield
+    lesson_audio.CACHE.clear(); admin_audio.pending.clear(); admin_media.pending.clear()
+
+
+async def test_admin_uploads_lesson_audio_and_users_get_it(sm):
+    from aiogram.methods import SendAudio
+    from aiogram.types import Audio
+    h = Harness(BASE, sm)
+    calls = await h.click("aud:1", uid=ADMIN)
+    assert any("День 1. Отправь" in t for t in texts_of(calls))
+    calls = await h.feed(message=h._msg(ADMIN, audio=Audio(file_id="AUD1", file_unique_id="a1", duration=600)))
+    assert any("загружена" in t for t in texts_of(calls))
+    assert [c.audio for c in calls if isinstance(c, SendAudio)] == ["AUD1"]
+
+    calls = await h.click("day1")  # обычная участница получает День 1
+    audios = [c for c in calls if isinstance(c, SendAudio)]
+    assert len(audios) == 1 and audios[0].audio == "AUD1"
+    assert "Кто я, когда никто не смотрит" in audios[0].caption and "наушниках" in audios[0].caption
+    # сценарий практики текстом больше не приходит
+    assert not any("Сядь удобно. Поставь стопы" in t for t in texts_of(calls))
+
+
+async def test_lesson_audio_persists_after_restart(sm):
+    from aiogram.types import Audio
+    from bot import lesson_audio
+    h = Harness(BASE, sm)
+    await h.click("aud:2", uid=ADMIN)
+    await h.feed(message=h._msg(ADMIN, audio=Audio(file_id="AUD2", file_unique_id="a2", duration=600)))
+    lesson_audio.CACHE.clear()          # «перезапуск»
+    await lesson_audio.load_cache(sm)
+    assert lesson_audio.CACHE == {2: ("audio", "AUD2")}
+
+
+async def test_audio_document_and_remove(sm):
+    from aiogram.types import Document
+    from bot import lesson_audio
+    h = Harness(BASE, sm)
+    await h.click("aud:3", uid=ADMIN)
+    doc = Document(file_id="DOC3", file_unique_id="d3", file_name="day3.mp3", mime_type="audio/mpeg")
+    await h.feed(message=h._msg(ADMIN, document=doc))
+    assert lesson_audio.CACHE[3] == ("document", "DOC3")
+    calls = await h.click("unaud:3", uid=ADMIN)
+    assert any("Убрала" in t for t in texts_of(calls)) and 3 not in lesson_audio.CACHE
+
+
+async def test_post_voice_still_works_with_audio_router(sm):
+    from aiogram.types import Voice
+    from bot import lesson_audio
+    h = Harness(BASE, sm)
+    await h.click("media:2026-11-09_1900_pochemu", uid=ADMIN)
+    calls = await h.feed(message=h._msg(ADMIN, voice=Voice(file_id="PV", file_unique_id="pv", duration=90)))
+    assert any("прикреплено к посту" in t for t in texts_of(calls))
+    assert lesson_audio.CACHE == {}
+
+
+async def test_audio_upload_ignored_for_non_admin(sm):
+    from aiogram.types import Audio
+    from bot import lesson_audio
+    h = Harness(BASE, sm)
+    await h.click("aud:1", uid=BUYER)
+    calls = await h.feed(message=h._msg(BUYER, audio=Audio(file_id="X", file_unique_id="x", duration=5)))
+    assert calls == [] and lesson_audio.CACHE == {}
+
+
+async def test_refund_suggests_prorated_amount(sm):
+    cfg = replace(TESTER, payment_mode="yookassa")
+    h = Harness(cfg, sm)
+    await h.click("day1")
+    await h.paid("yk-1", currency="RUB", amount=99000)
+    await h.text("/next")  # день 2 (если ещё не пришёл)
+    await h.text("/next")
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        opened = len([d for d in await delivered_map(s, u) if d > 1])
+    calls = await h.text(f"/refund {BUYER}", uid=ADMIN)
+    due = round(990 * (6 - opened) / 6)
+    assert any(f"Открыто платных дней: {opened} из 6. По оферте вернуть {due} ₽" in t
+               for t in texts_of(calls)), texts_of(calls)
