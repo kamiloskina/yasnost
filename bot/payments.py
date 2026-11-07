@@ -17,7 +17,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from bot import texts
 from bot.config import Config
 from bot.models import User
-from bot.services import COURSE, TRACKER, get_or_create_user, grant_purchase, has_paid, refund_user
+from datetime import datetime, timezone
+
+from bot.services import (
+    COURSE, TOTAL_DAYS, TRACKER, as_utc, delivered_map, get_or_create_user, grant_purchase,
+    has_paid, refund_user,
+)
+
+REFUND_WINDOW_DAYS = 3
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -152,11 +159,27 @@ async def cmd_refund(
         if user is None:
             await message.answer("Такого пользователя в базе нет.")
             return
+        delivered = await delivered_map(session, user)
         purchases = [p for p in await refund_user(session, user, product) if p.provider != "gift"]
         if not purchases:
             await message.answer("Оплаченных покупок у пользователя нет.")
             return
         notes = []
+        if product == COURSE:
+            paid_days = TOTAL_DAYS - 1
+            opened = len([d for d in delivered if d > 1])
+            unopened = max(paid_days - opened, 0)
+            for p in purchases:
+                if p.currency == "RUB":
+                    due = p.amount / 100 * unopened / paid_days
+                    notes.append(
+                        f"Открыто платных дней: {opened} из {paid_days}. По оферте вернуть "
+                        f"{due:.0f} ₽ из {p.amount / 100:.0f} ₽ (за {unopened} неоткрытых дн.)."
+                    )
+                age = datetime.now(timezone.utc) - as_utc(p.created_at)
+                if age.days >= REFUND_WINDOW_DAYS:
+                    notes.append(f"⚠️ С оплаты прошло {age.days} дн. — больше {REFUND_WINDOW_DAYS}, "
+                                 "по оферте возврат не положен (решение за тобой).")
         for p in purchases:
             if p.provider == "stars":
                 try:
@@ -168,8 +191,8 @@ async def cmd_refund(
                     return
             elif p.provider == "yookassa":
                 notes.append(
-                    f"Оплата ЮKassa {p.amount / 100:.0f} ₽ помечена как возвращённая. "
-                    "Сам возврат денег сделай в личном кабинете ЮKassa."
+                    "Оплата ЮKassa помечена как возвращённая. Сам возврат денег (сумма выше) "
+                    "сделай в личном кабинете ЮKassa."
                 )
             else:
                 notes.append(f"Покупка «{p.provider}» помечена как возвращённая.")

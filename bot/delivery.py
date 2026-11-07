@@ -21,8 +21,16 @@ log = logging.getLogger(__name__)
 
 
 async def send_lesson(bot: Bot, chat_id: int, day: int) -> None:
+    from bot.lesson_audio import send_cached
+
     lesson = load_lesson(day)
     for part in lesson.parts:
+        if part.is_audio:
+            # Аудио загружено через /audio: присылаем его с коротким вступлением вместо сценария
+            title = part.text.splitlines()[0] if part.text else ""
+            caption = (title + "\n\n" + texts.AUDIO_CAPTION_HINT).strip()
+            if await send_cached(bot, chat_id, day, caption):
+                continue
         audio = audio_path(day) if part.is_audio else None
         if audio is not None:
             caption = part.text if len(part.text) <= CAPTION_LIMIT else None
@@ -41,7 +49,7 @@ async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config
         await bot.send_message(
             chat_id,
             texts.OFFER.format(days=keyboards.days_list(2), price=texts.price_label(config)),
-            reply_markup=keyboards.offer(config),
+            reply_markup=keyboards.offer(config, chat_id),
         )
     else:
         await bot.send_message(chat_id, texts.AFTER_DAY.format(hour=config.delivery_hour))

@@ -72,3 +72,14 @@ class PostMedia(Base):
     kind: Mapped[str] = mapped_column(String(16))  # voice | video_note
     file_id: Mapped[str] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LessonAudio(Base):
+    """Аудиопрактика дня, загруженная админом через бота (/audio)."""
+    __tablename__ = "lesson_audio"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[int] = mapped_column(Integer, unique=True)
+    kind: Mapped[str] = mapped_column(String(16))  # audio | voice | document
+    file_id: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

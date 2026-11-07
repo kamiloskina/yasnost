@@ -52,7 +52,9 @@ async def cb_media(call: CallbackQuery, config: Config) -> None:
     await call.answer()
     if call.from_user.id not in config.admin_ids:
         return
+    from bot import admin_audio
     slug = call.data.split(":", 1)[1]
+    admin_audio.pending.pop(call.from_user.id, None)
     pending[call.from_user.id] = slug
     await call.message.answer(
         f"Пост {_date(slug)}. Запиши голосовое (или кружок) и отправь сюда — "
@@ -77,11 +79,16 @@ async def cb_unmedia(call: CallbackQuery, sessionmaker: async_sessionmaker, conf
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, config: Config) -> None:
-    if message.from_user.id in config.admin_ids and pending.pop(message.from_user.id, None):
+    from bot import admin_audio
+    uid = message.from_user.id
+    if uid not in config.admin_ids:
+        return
+    cancelled = pending.pop(uid, None) or admin_audio.pending.pop(uid, None)
+    if cancelled:
         await message.answer("Отменила.")
 
 
-@router.message(F.voice | F.video_note)
+@router.message(F.voice | F.video_note, lambda m: m.from_user.id in pending)
 async def on_media(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
     uid = message.from_user.id
     if uid not in config.admin_ids or uid not in pending:

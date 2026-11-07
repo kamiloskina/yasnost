@@ -59,7 +59,8 @@ async def cmd_start(
         next_line = texts.STATUS_NEED_PAY
     else:
         next_line = texts.STATUS_NEXT
-    markup = keyboards.offer(config) if (not paid and done < TOTAL_DAYS) else keyboards.my_days_only()
+    markup = (keyboards.offer(config, message.from_user.id) if (not paid and done < TOTAL_DAYS)
+              else keyboards.my_days_only())
     await message.answer(texts.STATUS.format(done=done, next_line=next_line), reply_markup=markup)
 
 
@@ -129,7 +130,9 @@ async def cb_buy(
         if await has_paid(session, user):
             await bot.send_message(chat_id, texts.ALREADY_PAID)
             return
-        if config.payment_mode == "off":
+        if config.payment_mode == "off" or (
+            config.payment_mode == "test" and not config.test_access(chat_id)
+        ):
             user.wants_purchase = True
             await session.commit()
             await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
@@ -219,7 +222,9 @@ async def cb_buy_tracker(
             await bot.send_message(chat_id, texts.TRACKER_ALREADY)
             await send_tracker(bot, chat_id)
             return
-        if config.payment_mode == "off":
+        if config.payment_mode == "off" or (
+            config.payment_mode == "test" and not config.test_access(chat_id)
+        ):
             user.wants_purchase = True
             await session.commit()
             await bot.send_message(chat_id, texts.PAYMENT_CLOSED)
@@ -247,14 +252,14 @@ async def cmd_help(message: Message) -> None:
     await message.answer(texts.HELP)
 
 
-# --- Команды для тестирования (DEBUG_COMMANDS=true) ---
+# --- Команды только для администраторов (ADMIN_IDS) ---
 
 @router.message(Command("next"))
 async def cmd_next(
     message: Message, bot: Bot, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
-    """Сразу открыть следующий день, не дожидаясь утра."""
-    if not config.debug_commands:
+    """Админ: сразу открыть следующий день, не дожидаясь утра."""
+    if not config.is_admin(message.from_user.id):
         return
     async with sessionmaker() as session:
         user = await _user(session, message.from_user, config)
@@ -272,8 +277,8 @@ async def cmd_next(
 
 @router.message(Command("reset"))
 async def cmd_reset(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
-    """Стереть свой прогресс и тестовую покупку."""
-    if not config.debug_commands:
+    """Админ: стереть свой прогресс и покупки, чтобы пройти путь заново."""
+    if not config.is_admin(message.from_user.id):
         return
     async with sessionmaker() as session:
         user = await _user(session, message.from_user, config)
@@ -313,3 +318,47 @@ async def cmd_autopost(
         return
     from bot.channel import autopost_status
     await message.answer(await autopost_status(bot, sessionmaker, config))
+
+
+@router.message(Command("history"))
+async def cmd_history(
+    message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    """Админ: /history <telegram_id> — оплаты и время выдачи каждого дня (доказательство при спорах)."""
+    if not config.is_admin(message.from_user.id):
+        return
+    from sqlalchemy import select
+
+    from bot.models import Purchase, User
+    from bot.services import as_utc
+    try:
+        tg_id = int((command.args or "").strip())
+    except ValueError:
+        await message.answer("Формат: /history 123456789 (Telegram ID)")
+        return
+    tz = ZoneInfo(config.default_timezone)
+    async with sessionmaker() as session:
+        user = await session.scalar(select(User).where(User.tg_id == tg_id))
+        if user is None:
+            await message.answer("Такого пользователя в базе нет.")
+            return
+        purchases = list(await session.scalars(
+            select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.created_at)
+        ))
+        delivered = await delivered_map(session, user)
+    name = f"@{user.username}" if user.username else (user.first_name or str(tg_id))
+    lines = [f"<b>{name}</b> (ID {tg_id})", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"
+             + (f", источник: {user.source}" if user.source else "")]
+    lines.append("\n<b>Оплаты</b>")
+    if not purchases:
+        lines.append("— нет")
+    for p in purchases:
+        amount = f"{p.amount / 100:.0f} ₽" if p.currency == "RUB" else f"{p.amount} {p.currency}"
+        lines.append(f"— {as_utc(p.created_at).astimezone(tz):%d.%m.%Y %H:%M}: {p.product}, {amount}, "
+                     f"{p.provider}, статус: {p.status}")
+    lines.append("\n<b>Выданные дни</b> (время отправки в чат)")
+    if not delivered:
+        lines.append("— нет")
+    for d in sorted(delivered):
+        lines.append(f"— День {d}: {delivered[d].astimezone(tz):%d.%m.%Y %H:%M}")
+    await message.answer("\n".join(lines))

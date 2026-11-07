@@ -52,6 +52,14 @@ class Config:
     tracker_price_rub: int = 490
     tracker_stars_price: int = 0
 
+    def is_admin(self, user_id: int) -> bool:
+        return user_id in self.admin_ids
+
+    def test_access(self, user_id: int) -> bool:
+        """Тестовый доступ без денег — только администраторам и только в PAYMENT_MODE=test.
+        Остальные в тестовом режиме видят «оплата скоро откроется»."""
+        return self.payment_mode == "test" and self.is_admin(user_id)
+
 
 def load_config() -> Config:
     token = os.getenv("BOT_TOKEN", "").strip()
