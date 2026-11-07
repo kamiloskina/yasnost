@@ -318,3 +318,47 @@ async def cmd_autopost(
         return
     from bot.channel import autopost_status
     await message.answer(await autopost_status(bot, sessionmaker, config))
+
+
+@router.message(Command("history"))
+async def cmd_history(
+    message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    """Админ: /history <telegram_id> — оплаты и время выдачи каждого дня (доказательство при спорах)."""
+    if not config.is_admin(message.from_user.id):
+        return
+    from sqlalchemy import select
+
+    from bot.models import Purchase, User
+    from bot.services import as_utc
+    try:
+        tg_id = int((command.args or "").strip())
+    except ValueError:
+        await message.answer("Формат: /history 123456789 (Telegram ID)")
+        return
+    tz = ZoneInfo(config.default_timezone)
+    async with sessionmaker() as session:
+        user = await session.scalar(select(User).where(User.tg_id == tg_id))
+        if user is None:
+            await message.answer("Такого пользователя в базе нет.")
+            return
+        purchases = list(await session.scalars(
+            select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.created_at)
+        ))
+        delivered = await delivered_map(session, user)
+    name = f"@{user.username}" if user.username else (user.first_name or str(tg_id))
+    lines = [f"<b>{name}</b> (ID {tg_id})", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"
+             + (f", источник: {user.source}" if user.source else "")]
+    lines.append("\n<b>Оплаты</b>")
+    if not purchases:
+        lines.append("— нет")
+    for p in purchases:
+        amount = f"{p.amount / 100:.0f} ₽" if p.currency == "RUB" else f"{p.amount} {p.currency}"
+        lines.append(f"— {as_utc(p.created_at).astimezone(tz):%d.%m.%Y %H:%M}: {p.product}, {amount}, "
+                     f"{p.provider}, статус: {p.status}")
+    lines.append("\n<b>Выданные дни</b> (время отправки в чат)")
+    if not delivered:
+        lines.append("— нет")
+    for d in sorted(delivered):
+        lines.append(f"— День {d}: {delivered[d].astimezone(tz):%d.%m.%Y %H:%M}")
+    await message.answer("\n".join(lines))

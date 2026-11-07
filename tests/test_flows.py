@@ -573,3 +573,15 @@ async def test_refund_suggests_prorated_amount(sm):
     due = round(990 * (6 - opened) / 6)
     assert any(f"Открыто платных дней: {opened} из 6. По оферте вернуть {due} ₽" in t
                for t in texts_of(calls)), texts_of(calls)
+
+
+
+async def test_history_shows_payments_and_delivery_times(sm):
+    h = Harness(TESTER, sm)
+    await h.click("day1")
+    await h.click("buy")
+    await h.text("/next")
+    calls = await h.text(f"/history {BUYER}", uid=ADMIN)
+    text = texts_of(calls)[0]
+    assert "course, 990 ₽, test, статус: paid" in text and "День 1:" in text and "День 2:" in text
+    assert await h.text(f"/history {BUYER}", uid=777) == []  # посторонний — тишина

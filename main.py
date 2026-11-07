@@ -75,6 +75,7 @@ async def main() -> None:
         BotCommand(command="next", description="Админ: следующий день сразу"),
         BotCommand(command="reset", description="Админ: сбросить мой прогресс"),
         BotCommand(command="refund", description="Админ: возврат"),
+        BotCommand(command="history", description="Админ: история пользователя"),
     ]
     await bot.set_my_commands(public_commands)
     # Админские команды видны в меню только администраторам
