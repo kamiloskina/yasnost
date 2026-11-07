@@ -1,0 +1,14 @@
+# Настройки для хостинга Amvera (amvera.ru).
+# Бот работает в режиме polling, порт наружу ему не нужен; containerPort оставлен по умолчанию.
+meta:
+  environment: python
+  toolchain:
+    name: pip
+    version: "3.12"
+build:
+  requirementsPath: requirements.txt
+run:
+  scriptName: main.py
+  # Постоянное хранилище: база бота (SQLite) живёт в /data и не стирается при обновлениях
+  persistenceMount: /data
+  containerPort: 80
