@@ -14,6 +14,7 @@ from bot.config import load_config
 from bot.db import init_db, make_engine
 from bot.delivery import run_scheduler
 from bot.handlers import router
+from bot.admin_media import router as media_router
 from bot.payments import router as payments_router
 from bot.keyboards import titles
 
@@ -65,6 +66,7 @@ async def main() -> None:
     ])
     dp = Dispatcher(config=config, sessionmaker=sessionmaker)
     dp.include_router(payments_router)
+    dp.include_router(media_router)
     dp.include_router(router)
 
     health = await start_health_server()

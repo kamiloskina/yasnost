@@ -61,3 +61,14 @@ class ChannelPost(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(128), unique=True)
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PostMedia(Base):
+    """Голосовое или кружок, прикреплённые к посту канала (присылаются админом боту)."""
+    __tablename__ = "post_media"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), unique=True)
+    kind: Mapped[str] = mapped_column(String(16))  # voice | video_note
+    file_id: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

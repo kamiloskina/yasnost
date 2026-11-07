@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.config import Config
 from bot.content import CONTENT_DIR
-from bot.models import ChannelPost
+from bot.models import ChannelPost, PostMedia
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +88,7 @@ async def publish_due(
     published: list[str] = []
     async with sessionmaker() as session:
         posted = set(await session.scalars(select(ChannelPost.slug)))
+        media = {m.slug: m for m in await session.scalars(select(PostMedia))}
         for post in due_posts(posts, posted, now):
             try:
                 session.add(ChannelPost(slug=post.slug, posted_at=now))
@@ -101,6 +102,13 @@ async def publish_due(
                     [InlineKeyboardButton(text=label, url=url)] for label, url in post.buttons
                 ])
             try:
+                m = media.get(post.slug)
+                if m is not None:
+                    # Сначала голос/кружок — он цепляет, затем текст с кнопкой для тех, кто не может слушать
+                    if m.kind == "video_note":
+                        await bot.send_video_note(config.channel_id, m.file_id)
+                    else:
+                        await bot.send_voice(config.channel_id, m.file_id)
                 await bot.send_message(config.channel_id, post.text, reply_markup=markup)
             except Exception:
                 await session.rollback()
@@ -138,6 +146,7 @@ async def autopost_status(bot: Bot, sessionmaker: async_sessionmaker, config: Co
             lines.append(f"<b>Права бота:</b> не удалось проверить — бот не добавлен в канал? ({e})")
     async with sessionmaker() as session:
         posted = set(await session.scalars(select(ChannelPost.slug)))
+        with_media = set(await session.scalars(select(PostMedia.slug)))
     tz = ZoneInfo(config.default_timezone)
     upcoming = [p for p in load_posts(config.default_timezone, channel_dir)
                 if p.slug not in posted and p.at + MAX_LATENESS >= now]
@@ -145,5 +154,39 @@ async def autopost_status(bot: Bot, sessionmaker: async_sessionmaker, config: Co
     for p in upcoming[:5]:
         first = p.text.splitlines()[0] if p.text else p.slug
         first = re.sub(r"<[^>]+>", "", first)
-        lines.append(f"• {p.at.astimezone(tz):%d.%m %H:%M} — {first}")
+        mark = " 🎙" if p.slug in with_media else ""
+        lines.append(f"• {p.at.astimezone(tz):%d.%m %H:%M} — {first}{mark}")
     return "\n".join(lines)
+
+
+
+def upcoming_posts(posted: set[str], now: datetime, tz_name: str,
+                   channel_dir: Path = CHANNEL_DIR) -> list[Post]:
+    return [p for p in load_posts(tz_name, channel_dir)
+            if p.slug not in posted and p.at + MAX_LATENESS >= now]
+
+
+def post_title(post: Post) -> str:
+    first = post.text.splitlines()[0] if post.text else post.slug
+    return re.sub(r"<[^>]+>", "", first)
+
+
+async def attach_media(sessionmaker: async_sessionmaker, slug: str, kind: str, file_id: str) -> None:
+    """Прикрепляет (или заменяет) голосовое/кружок к посту."""
+    async with sessionmaker() as session:
+        existing = await session.scalar(select(PostMedia).where(PostMedia.slug == slug))
+        if existing is None:
+            session.add(PostMedia(slug=slug, kind=kind, file_id=file_id))
+        else:
+            existing.kind, existing.file_id = kind, file_id
+        await session.commit()
+
+
+async def detach_media(sessionmaker: async_sessionmaker, slug: str) -> bool:
+    async with sessionmaker() as session:
+        existing = await session.scalar(select(PostMedia).where(PostMedia.slug == slug))
+        if existing is None:
+            return False
+        await session.delete(existing)
+        await session.commit()
+        return True
