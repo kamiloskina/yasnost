@@ -251,7 +251,7 @@ async def test_source_saved_once_and_shown_in_stats(sm):
     async with sm() as s:
         assert (await s.scalar(select(User))).source == "reels_01"
     calls = await h.text("/stats", uid=ADMIN)
-    assert any("reels_01: пришли 1" in t for t in texts_of(calls))
+    assert any("reels_01: пришли 1 → День 1: 0 → оплатили 0" in t for t in texts_of(calls))
 
 
 # ---------- автопостинг ----------
@@ -667,3 +667,18 @@ async def test_forget_keeps_payments(sm):
         assert await delivered_map(s, u) == {}
         assert len(list(await s.scalars(select(Purchase)))) == 1
     assert await h.text(f"/forget {BUYER}", uid=777) == []
+
+
+
+async def test_channel_buttons_get_per_post_tag(sm, tmp_path):
+    _post(tmp_path, "2026-11-09_1900_pochemu.md",
+          "Текст\n@button В бот | https://t.me/Clarity7DaysBot?start=channel")
+    h = Harness(BASE, sm)
+    now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
+    await publish_due(h.bot, sm, BASE, now, tmp_path)
+    url = h.session.calls[-1].reply_markup.inline_keyboard[0][0].url
+    assert url == "https://t.me/Clarity7DaysBot?start=ch1109"
+    await h.text("/start ch1109")
+    await h.click("day1")
+    calls = await h.text("/stats", uid=ADMIN)
+    assert any("ch1109: пришли 1 → День 1: 1 → оплатили 0" in t for t in texts_of(calls))

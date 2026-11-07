@@ -360,7 +360,7 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
     async with sessionmaker() as session:
         s = await stats(session)
         sources = await stats_by_source(session)
-    src_lines = "\n".join(f"  {src}: пришли {n}, оплатили {p}" for src, n, p in sources)
+    src_lines = "\n".join(f"  {src}: пришли {n} → День 1: {d} → оплатили {p}" for src, n, d, p in sources)
     await message.answer(
         "<b>Воронка</b>\n"
         f"Нажали /start: {s['users']}\n"

@@ -169,16 +169,19 @@ async def stats(session: AsyncSession) -> dict[str, int]:
     }
 
 
-async def stats_by_source(session: AsyncSession) -> list[tuple[str, int, int]]:
-    """(источник, сколько пришло, сколько оплатили)"""
+async def stats_by_source(session: AsyncSession) -> list[tuple[str, int, int, int]]:
+    """(источник, сколько пришло, сколько открыли День 1, сколько оплатили путь)"""
     paid_users = select(Purchase.user_id).where(
-        Purchase.status == "paid", Purchase.product == COURSE
+        Purchase.status == "paid", Purchase.product == COURSE, Purchase.provider != "gift"
     )
+    day1_users = select(Delivery.user_id).where(Delivery.day == 1)
+    src = func.coalesce(User.source, "—")
     rows = await session.execute(
         select(
-            func.coalesce(User.source, "—"),
+            src,
             func.count(User.id),
+            func.count(User.id).filter(User.id.in_(day1_users)),
             func.count(User.id).filter(User.id.in_(paid_users)),
-        ).group_by(func.coalesce(User.source, "—")).order_by(func.count(User.id).desc())
+        ).group_by(src).order_by(func.count(User.id).desc())
     )
-    return [(src, int(n), int(p)) for src, n, p in rows.all()]
+    return [(s_, int(n), int(d), int(p)) for s_, n, d, p in rows.all()]
