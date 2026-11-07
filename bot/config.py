@@ -49,6 +49,8 @@ class Config:
     support_contact: str = ""
     channel_id: str = ""
     autopost: bool = False
+    tracker_price_rub: int = 490
+    tracker_stars_price: int = 0
 
 
 def load_config() -> Config:
@@ -67,6 +69,9 @@ def load_config() -> Config:
     stars_price = int(os.getenv("STARS_PRICE", "0") or 0)
     if payment_mode == "stars" and stars_price <= 0:
         raise SystemExit("Для PAYMENT_MODE=stars задай STARS_PRICE — цену в звёздах")
+    tracker_stars_price = int(os.getenv("TRACKER_STARS_PRICE", "0") or 0)
+    if payment_mode == "stars" and tracker_stars_price <= 0:
+        raise SystemExit("Для PAYMENT_MODE=stars задай TRACKER_STARS_PRICE — цену трекера в звёздах")
     autopost = _bool("AUTOPOST", False)
     channel_id = os.getenv("CHANNEL_ID", "").strip()
     if autopost and not channel_id:
@@ -91,4 +96,6 @@ def load_config() -> Config:
         support_contact=os.getenv("SUPPORT_CONTACT", "").strip(),
         channel_id=channel_id,
         autopost=autopost,
+        tracker_price_rub=int(os.getenv("TRACKER_PRICE_RUB", "490")),
+        tracker_stars_price=tracker_stars_price,
     )

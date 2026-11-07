@@ -47,8 +47,17 @@ def my_days_only() -> Kb:
     ])
 
 
-def days(delivered: list[int]) -> Kb:
+def days(delivered: list[int], has_tracker: bool = False) -> Kb:
     t = titles()
-    return Kb(inline_keyboard=[
-        [Btn(text=f"День {d}. {t[d]}", callback_data=f"open:{d}")] for d in sorted(delivered)
-    ])
+    rows = [[Btn(text=f"День {d}. {t[d]}", callback_data=f"open:{d}")] for d in sorted(delivered)]
+    if has_tracker:
+        rows.append([Btn(text=texts.BTN_TRACKER_GET, callback_data="tracker")])
+    return Kb(inline_keyboard=rows)
+
+
+def tracker_offer(config: Config) -> Kb:
+    if config.payment_mode == "test":
+        label = texts.BTN_TRACKER_BUY_TEST
+    else:
+        label = texts.BTN_TRACKER_BUY.format(price=texts.tracker_price_label(config))
+    return Kb(inline_keyboard=[[Btn(text=label, callback_data="buy:tracker")]])

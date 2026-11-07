@@ -57,6 +57,7 @@ async def main() -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="Начало и мой статус"),
         BotCommand(command="days", description="Мои дни"),
+        BotCommand(command="tracker", description="Трекер на 30 дней"),
         BotCommand(command="restore", description="Восстановить доступ"),
         BotCommand(command="terms", description="Условия и возврат"),
         BotCommand(command="paysupport", description="Вопросы по оплате"),

@@ -37,10 +37,15 @@ async def get_or_create_user(
     return user
 
 
-async def has_paid(session: AsyncSession, user: User) -> bool:
+COURSE = "course"
+TRACKER = "tracker"
+
+
+async def has_paid(session: AsyncSession, user: User, product: str = COURSE) -> bool:
+    """Есть ли у пользователя этот продукт (оплачен или подарен)."""
     count = await session.scalar(
         select(func.count()).select_from(Purchase).where(
-            Purchase.user_id == user.id, Purchase.status == "paid"
+            Purchase.user_id == user.id, Purchase.status == "paid", Purchase.product == product
         )
     )
     return bool(count)
@@ -48,7 +53,7 @@ async def has_paid(session: AsyncSession, user: User) -> bool:
 
 async def grant_purchase(
     session: AsyncSession, user: User, provider: str, provider_payment_id: str, amount: int,
-    currency: str = "RUB",
+    currency: str = "RUB", product: str = COURSE,
 ) -> bool:
     """Записывает оплату. Возвращает False, если этот платёж уже был учтён (повторное уведомление)."""
     existing = await session.scalar(
@@ -59,7 +64,7 @@ async def grant_purchase(
     try:
         session.add(Purchase(
             user_id=user.id, provider=provider, provider_payment_id=provider_payment_id,
-            amount=amount, currency=currency, status="paid",
+            amount=amount, currency=currency, status="paid", product=product,
         ))
         await session.flush()
     except IntegrityError:
@@ -69,15 +74,17 @@ async def grant_purchase(
     return True
 
 
-async def paid_purchases(session: AsyncSession, user: User) -> list[Purchase]:
+async def paid_purchases(session: AsyncSession, user: User, product: str = COURSE) -> list[Purchase]:
     return list(await session.scalars(
-        select(Purchase).where(Purchase.user_id == user.id, Purchase.status == "paid")
+        select(Purchase).where(
+            Purchase.user_id == user.id, Purchase.status == "paid", Purchase.product == product
+        )
     ))
 
 
-async def refund_user(session: AsyncSession, user: User) -> list[Purchase]:
-    """Помечает оплаты пользователя как возвращённые: выдача дней 2–7 прекращается."""
-    purchases = await paid_purchases(session, user)
+async def refund_user(session: AsyncSession, user: User, product: str = COURSE) -> list[Purchase]:
+    """Помечает оплаты продукта как возвращённые (для курса — выдача дней 2–7 прекращается)."""
+    purchases = await paid_purchases(session, user, product)
     for p in purchases:
         p.status = "refunded"
     return purchases
@@ -136,7 +143,22 @@ async def stats(session: AsyncSession) -> dict[str, int]:
             select(func.count()).select_from(User).where(User.wants_purchase.is_(True))
         ),
         "paid": await count(
-            select(func.count(func.distinct(Purchase.user_id))).where(Purchase.status == "paid")
+            select(func.count(func.distinct(Purchase.user_id))).where(
+                Purchase.status == "paid", Purchase.product == COURSE,
+                Purchase.provider != "gift",
+            )
+        ),
+        "tracker_paid": await count(
+            select(func.count(func.distinct(Purchase.user_id))).where(
+                Purchase.status == "paid", Purchase.product == TRACKER,
+                Purchase.provider != "gift",
+            )
+        ),
+        "tracker_gift": await count(
+            select(func.count(func.distinct(Purchase.user_id))).where(
+                Purchase.status == "paid", Purchase.product == TRACKER,
+                Purchase.provider == "gift",
+            )
         ),
         "completed": await count(
             select(func.count(func.distinct(Delivery.user_id))).where(Delivery.day == TOTAL_DAYS)
@@ -149,7 +171,9 @@ async def stats(session: AsyncSession) -> dict[str, int]:
 
 async def stats_by_source(session: AsyncSession) -> list[tuple[str, int, int]]:
     """(источник, сколько пришло, сколько оплатили)"""
-    paid_users = select(Purchase.user_id).where(Purchase.status == "paid")
+    paid_users = select(Purchase.user_id).where(
+        Purchase.status == "paid", Purchase.product == COURSE
+    )
     rows = await session.execute(
         select(
             func.coalesce(User.source, "—"),
