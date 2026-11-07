@@ -135,6 +135,15 @@ def texts_of(calls):
 
 
 @pytest.fixture
+def all_audio():
+    """Имитация: аудиопрактики всех дней загружены через /audio."""
+    from bot import lesson_audio
+    lesson_audio.CACHE.update({d: ("audio", f"AUD{d}") for d in range(1, 8)})
+    yield
+    lesson_audio.CACHE.clear()
+
+
+@pytest.fixture
 async def sm():
     engine = make_engine("sqlite+aiosqlite://")
     maker = await init_db(engine)
@@ -253,7 +262,7 @@ async def test_source_saved_once_and_shown_in_stats(sm):
     assert any("Можно я запомню" in t for t in texts_of(calls))
     async with sm() as s:
         assert (await s.scalar(select(User))).source is None  # без согласия метка не хранится
-    await h.click("consent")
+    await h.click("consent:reels_01")
     await h.text("/start channel")  # повторный старт не перезаписывает источник
     async with sm() as s:
         assert (await s.scalar(select(User))).source == "reels_01"
@@ -592,7 +601,7 @@ async def test_audio_upload_ignored_for_non_admin(sm):
     assert calls == [] and lesson_audio.CACHE == {}
 
 
-async def test_refund_suggests_prorated_amount(sm):
+async def test_refund_suggests_prorated_amount(sm, all_audio):
     cfg = replace(TESTER, payment_mode="yookassa")
     h = Harness(cfg, sm)
     await h.click("day1")
@@ -666,7 +675,7 @@ async def test_regular_user_reply_is_not_relayed(sm):
 async def test_forget_keeps_payments(sm):
     h = Harness(TESTER, sm)
     await h.text("/start reels_01")
-    await h.click("consent")
+    await h.click("consent:reels_01")
     await h.click("day1")
     await h.click("buy")
     calls = await h.text(f"/forget {BUYER}", uid=ADMIN)
@@ -689,7 +698,7 @@ async def test_channel_buttons_get_per_post_tag(sm, tmp_path):
     url = h.session.calls[-1].reply_markup.inline_keyboard[0][0].url
     assert url == "https://t.me/Clarity7DaysBot?start=ch1109"
     await h.text("/start ch1109")
-    await h.click("consent")
+    await h.click("consent:ch1109")
     await h.click("day1")
     calls = await h.text("/stats", uid=ADMIN)
     assert any("ch1109: пришли 1 → День 1: 1 → оплатили 0" in t for t in texts_of(calls))

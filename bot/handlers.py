@@ -51,8 +51,6 @@ async def cmd_start(
             await count_source(session, source)
             ask_analytics = user.source is None and not await legal.has_analytics_consent(session, user)
             await session.commit()
-            if ask_analytics:
-                pending_sources[message.from_user.id] = source
         else:
             ask_analytics = False
         if source and source.startswith("tracker"):
@@ -64,9 +62,13 @@ async def cmd_start(
     if not delivered:
         await message.answer(texts.welcome(config), reply_markup=keyboards.welcome())
         if ask_analytics:
+            # Метка не сохраняется до согласия: она передаётся только в данных кнопки
             await message.answer(
                 texts.analytics_ask(config),
-                reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_ANALYTICS, callback_data="consent")]]),
+                reply_markup=Kb(inline_keyboard=[
+                    [Btn(text=texts.BTN_ANALYTICS, callback_data=f"consent:{source[:50]}")],
+                    [Btn(text=texts.BTN_ANALYTICS_NO, callback_data="consent_no")],
+                ]),
             )
         return
     done = len(delivered)
@@ -105,10 +107,6 @@ async def cb_day1(
         await call.message.answer(texts.DAY1_ALREADY, reply_markup=keyboards.my_days_only())
 
 
-# Метка перехода до решения пользователя хранится только в памяти процесса
-pending_sources: dict[int, str] = {}
-
-
 async def count_source(session: AsyncSession, source: str) -> None:
     from sqlalchemy import select
 
@@ -120,7 +118,17 @@ async def count_source(session: AsyncSession, source: str) -> None:
         row.starts += 1
 
 
-@router.callback_query(F.data == "consent")
+@router.callback_query(F.data == "consent_no")
+async def cb_consent_no(call: CallbackQuery) -> None:
+    """Отказ: ничего не записываем, просто убираем кнопки."""
+    await call.answer("Хорошо, не учитываю.")
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("consent"))
 async def cb_consent(call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config) -> None:
     """Отдельное необязательное согласие только на учёт источника перехода (ст. 9 152-ФЗ).
     На доступ к курсу не влияет. Кнопка не отмечена заранее."""
@@ -129,7 +137,7 @@ async def cb_consent(call: CallbackQuery, bot: Bot, sessionmaker: async_sessionm
         user = await _user(session, call.from_user, config)
         if not await legal.has_analytics_consent(session, user):
             await legal.record(session, user, legal.ANALYTICS_CONSENT)
-        src = pending_sources.pop(call.from_user.id, None)
+        src = _clean_source(call.data.split(":", 1)[1]) if ":" in call.data else None
         if src and user.source is None:
             user.source = src
         await session.commit()
@@ -447,8 +455,7 @@ async def cmd_history(
         ))
         delivered = await delivered_map(session, user)
     name = f"Пользователь {tg_id}"
-    lines = [f"<b>{name}</b>", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"
-             + (f", источник: {user.source}" if user.source else "")]
+    lines = [f"<b>{name}</b>", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"]
     lines.append("\n<b>Оплаты</b>")
     if not purchases:
         lines.append("— нет")

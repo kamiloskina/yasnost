@@ -66,10 +66,12 @@ def stage_price(price_total: int) -> int:
 
 
 async def stages_provided(session: AsyncSession, user: User) -> int:
-    """Сколько платных этапов фактически предоставлено: материалы дня направлены в чат
-    (запись создаётся только после успешной отправки, а не по наступлению календарной даты)."""
+    """Сколько платных этапов фактически предоставлено полностью: все материалы дня, включая
+    аудиопрактику, направлены в чат (запись создаётся только после успешной отправки, а не по
+    наступлению календарной даты; этап без аудио не учитывается)."""
     days = await session.scalars(
-        select(Delivery.day).where(Delivery.user_id == user.id, Delivery.day.in_(PAID_STAGES))
+        select(Delivery.day).where(Delivery.user_id == user.id, Delivery.day.in_(PAID_STAGES),
+                                   Delivery.complete.is_(True))
     )
     return len(set(days))
 

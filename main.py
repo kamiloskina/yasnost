@@ -50,8 +50,13 @@ async def main() -> None:
 
     engine = make_engine(config.database_url)
     sessionmaker = await init_db(engine)
-    from bot.lesson_audio import load_cache
+    from bot.lesson_audio import CACHE, load_cache
+    from bot.content import audio_path
     await load_cache(sessionmaker)
+    missing = [d for d in range(2, 8) if d not in CACHE and audio_path(d) is None]
+    if missing and config.payment_mode in {"yookassa", "stars"}:
+        logging.warning("paid stages without audio practice: days %s — such stages are incomplete "
+                        "(offer 2.4, 6.5); upload audio via /audio before selling", missing)
 
     bot = Bot(config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     # Проверка токена и сброс вебхука: если старая версия бота принимала сообщения через вебхук,

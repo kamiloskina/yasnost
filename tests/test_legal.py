@@ -11,7 +11,7 @@ from sqlalchemy import select
 from bot import legal
 from bot.models import Delivery, LegalAction, Purchase, RefundRequest, User
 from bot.services import delivered_map, has_paid
-from tests.test_flows import ADMIN, BASE, BUYER, TESTER, Harness, sm, texts_of  # noqa: F401
+from tests.test_flows import ADMIN, BASE, BUYER, TESTER, Harness, all_audio, sm, texts_of  # noqa: F401
 
 ROOT = Path(__file__).resolve().parent.parent
 YK = replace(TESTER, payment_mode="yookassa", offer_url="https://t/offer",
@@ -102,7 +102,7 @@ async def test_only_actually_sent_paid_stages_count(sm):
 
 # ---------- процедура возврата ----------
 
-async def test_user_return_flow_is_registered_idempotent_and_completed(sm):
+async def test_user_return_flow_is_registered_idempotent_and_completed(sm, all_audio):
     h = Harness(TESTER, sm)
     await h.click("day1")
     await h.click("buy")
@@ -145,7 +145,7 @@ async def test_refund_done_custom_amount(sm):
         assert (await s.get(RefundRequest, req_id)).final_amount == 99000
 
 
-async def test_stars_auto_refund_only_without_paid_stages(sm):
+async def test_stars_auto_refund_only_without_paid_stages(sm, all_audio):
     cfg = replace(TESTER, payment_mode="stars")
     h = Harness(cfg, sm)
     await h.click("day1")
@@ -208,3 +208,35 @@ def test_publish_versions_are_clean_and_current():
         assert bp.convert(src) == pub
     offer = (ROOT / "docs/legal/publish/offer.txt").read_text(encoding="utf-8")
     assert "990" in offer and "165" in offer and "текстовая версия" not in offer
+
+
+
+async def test_stage_without_audio_is_not_counted_and_becomes_complete_after_audio(sm):
+    from aiogram.types import Audio
+    h = Harness(TESTER, sm)
+    await h.click("day1")
+    await h.click("buy")
+    await h.text("/next")  # день 2 ушёл без записи аудиопрактики
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        assert await legal.stages_provided(s, u) == 0
+    calls = await h.text("/return")
+    assert any("0 из 6" in t and "990 ₽" in t for t in texts_of(calls))
+    await h.click("aud:2", uid=ADMIN)
+    await h.feed(message=h._msg(ADMIN, audio=Audio(file_id="A2", file_unique_id="a2", duration=600)))
+    await h.click("aud_send:2", uid=ADMIN)
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        assert await legal.stages_provided(s, u) == 1  # дослали аудио — этап полный
+
+
+async def test_analytics_consent_decline_records_nothing(sm):
+    h = Harness(BASE, sm, auto_legal=False)
+    calls = await h.text("/start reels_01")
+    kb = [c for c in calls if isinstance(c, SendMessage)][-1].reply_markup
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert datas == ["consent:reels_01", "consent_no"]
+    await h.click("consent_no")
+    assert await actions(sm) == []
+    async with sm() as s:
+        assert (await s.scalar(select(User))).source is None

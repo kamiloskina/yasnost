@@ -61,7 +61,7 @@ async def test_privacy_access_request_is_registered(sm):
 async def test_analytics_withdraw(sm):
     h = Harness(BASE, sm, auto_legal=False)
     await h.text("/start reels_01")
-    await h.click("consent")
+    await h.click("consent:reels_01")
     assert (await _user(sm)).source == "reels_01"
     calls = await h.click("pd:analytics")
     assert any("Обращение №" in t and "метка удалена" in t for t in texts_of(calls))

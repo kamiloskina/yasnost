@@ -38,6 +38,16 @@ async def _receivers(sessionmaker: async_sessionmaker, day: int) -> list[int]:
         return list(rows)
 
 
+async def _mark_complete(sessionmaker: async_sessionmaker, tg_id: int, day: int) -> None:
+    """Аудио дослано — этап у этого человека теперь полный."""
+    from sqlalchemy import update
+    async with sessionmaker() as session:
+        uid = await session.scalar(select(User.id).where(User.tg_id == tg_id))
+        await session.execute(update(Delivery).where(Delivery.user_id == uid, Delivery.day == day)
+                              .values(complete=True))
+        await session.commit()
+
+
 @router.message(Command("audio"))
 async def cmd_audio(message: Message, config: Config) -> None:
     if not config.is_admin(message.from_user.id):
@@ -136,6 +146,7 @@ async def cb_audio_broadcast(call: CallbackQuery, sessionmaker: async_sessionmak
         try:
             await send_cached(call.bot, tg_id, day, texts.audio_ready(day))
             sent += 1
+            await _mark_complete(sessionmaker, tg_id, day)
         except TelegramForbiddenError:
             continue
         except Exception:

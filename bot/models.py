@@ -54,6 +54,9 @@ class Delivery(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     day: Mapped[int] = mapped_column(Integer)
     delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Все материалы этапа направлены, включая запись аудиопрактики (оферта, п. 6.5).
+    # False — этап ушёл без аудио (записи ещё не было): при возврате не учитывается как оказанный.
+    complete: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
 
 class ChannelPost(Base):

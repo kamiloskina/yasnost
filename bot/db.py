@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 MIGRATIONS = [
     ("purchases", "product", "VARCHAR(16) NOT NULL DEFAULT 'course'"),
     ("users", "last_activity_at", "TIMESTAMP"),
+    ("deliveries", "complete", "BOOLEAN NOT NULL DEFAULT TRUE"),
 ]
 
 

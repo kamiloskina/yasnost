@@ -20,9 +20,11 @@ from bot.services import TOTAL_DAYS, delivered_map, has_paid, next_due_day
 log = logging.getLogger(__name__)
 
 
-async def send_lesson(bot: Bot, chat_id: int, day: int) -> None:
+async def send_lesson(bot: Bot, chat_id: int, day: int) -> bool:
+    """Отправляет материалы дня. Возвращает False, если аудиопрактики ещё нет (этап неполный)."""
     from bot.lesson_audio import send_cached
 
+    complete = True
     lesson = load_lesson(day)
     for part in lesson.parts:
         if part.is_audio:
@@ -37,8 +39,10 @@ async def send_lesson(bot: Bot, chat_id: int, day: int) -> None:
             else:
                 # Записи ещё нет: сценарий практики не отправляем — только короткое сообщение
                 await bot.send_message(chat_id, texts.audio_pending(title))
+                complete = False
             continue
         await bot.send_message(chat_id, part.text)
+    return complete
 
 
 async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config) -> None:
@@ -67,14 +71,15 @@ async def deliver_day(
     uid, tg_id = user.id, user.tg_id
     await session.commit()  # всё, что было до выдачи (например, новый пользователь), сохраняем отдельно
     try:
-        session.add(Delivery(user_id=uid, day=day, delivered_at=now or datetime.now(timezone.utc)))
+        record = Delivery(user_id=uid, day=day, delivered_at=now or datetime.now(timezone.utc))
+        session.add(record)
         await session.flush()
     except IntegrityError:
         await session.rollback()
         await session.refresh(user)
         return False
     try:
-        await send_lesson(bot, tg_id, day)
+        record.complete = await send_lesson(bot, tg_id, day)
     except TelegramForbiddenError:
         await session.rollback()
         fresh = await session.get(User, uid)
