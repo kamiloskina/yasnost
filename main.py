@@ -47,6 +47,13 @@ async def main() -> None:
     sessionmaker = await init_db(engine)
 
     bot = Bot(config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    # Проверка токена и сброс вебхука: если старая версия бота принимала сообщения через вебхук,
+    # Telegram не отдаёт их в polling, и бот молчит.
+    me = await bot.get_me()
+    info = await bot.get_webhook_info()
+    if info.url:
+        logging.warning("webhook was set (%s) — deleting it to use polling", info.url)
+    await bot.delete_webhook(drop_pending_updates=False)
     await bot.set_my_commands([
         BotCommand(command="start", description="Начало и мой статус"),
         BotCommand(command="days", description="Мои дни"),
@@ -61,7 +68,10 @@ async def main() -> None:
 
     health = await start_health_server()
     scheduler = asyncio.create_task(run_scheduler(bot, sessionmaker, config))
-    logging.info("bot started, payment_mode=%s, autopost=%s", config.payment_mode, config.autopost)
+    logging.info(
+        "bot started: @%s, payment_mode=%s, autopost=%s, db=%s", me.username, config.payment_mode,
+        config.autopost, config.database_url.split("://")[0],
+    )
     try:
         await dp.start_polling(bot)
     finally:
