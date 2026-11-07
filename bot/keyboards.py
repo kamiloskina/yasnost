@@ -28,10 +28,12 @@ def about() -> Kb:
 
 
 def offer(config: Config) -> Kb:
-    label = (
-        texts.BTN_BUY_TEST if config.payment_mode == "test"
-        else texts.BTN_BUY.format(price=config.price_rub)
-    )
+    if config.payment_mode == "test":
+        label = texts.BTN_BUY_TEST
+    elif config.payment_mode == "stars":
+        label = texts.BTN_BUY_STARS.format(stars=config.stars_price)
+    else:
+        label = texts.BTN_BUY.format(price=config.price_rub)
     return Kb(inline_keyboard=[
         [Btn(text=label, callback_data="buy")],
         [Btn(text=texts.BTN_MY_DAYS, callback_data="days")],

@@ -186,3 +186,14 @@ async def test_failed_send_is_retried_later(sm):
         assert await deliver_day(Flaky(), s, user, 1, CFG) is False
         assert await delivered_map(s, user) == {}
         assert await deliver_day(FakeBot(), s, user, 1, CFG) is True
+
+
+def test_channel_posts_are_valid():
+    from bot.channel import CHANNEL_DIR, load_posts
+    files = list(CHANNEL_DIR.glob("*.md"))
+    posts = load_posts(MSK)
+    assert len(posts) == len(files), "имя файла поста не в формате ГГГГ-ММ-ДД_ЧЧММ_название.md"
+    for p in posts:
+        assert 0 < len(p.text) <= 4096, p.slug
+        for label, url in p.buttons:
+            assert label and url.startswith("https://"), p.slug

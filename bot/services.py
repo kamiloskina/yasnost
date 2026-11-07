@@ -19,11 +19,15 @@ def as_utc(dt: datetime) -> datetime:
 
 
 async def get_or_create_user(
-    session: AsyncSession, tg_id: int, username: str | None, first_name: str | None, default_tz: str
+    session: AsyncSession, tg_id: int, username: str | None, first_name: str | None, default_tz: str,
+    source: str | None = None,
 ) -> User:
     user = await session.scalar(select(User).where(User.tg_id == tg_id))
     if user is None:
-        user = User(tg_id=tg_id, username=username, first_name=first_name, timezone=default_tz)
+        user = User(
+            tg_id=tg_id, username=username, first_name=first_name, timezone=default_tz,
+            source=source,
+        )
         session.add(user)
         await session.flush()
     else:
@@ -63,6 +67,20 @@ async def grant_purchase(
         await session.rollback()
         return False
     return True
+
+
+async def paid_purchases(session: AsyncSession, user: User) -> list[Purchase]:
+    return list(await session.scalars(
+        select(Purchase).where(Purchase.user_id == user.id, Purchase.status == "paid")
+    ))
+
+
+async def refund_user(session: AsyncSession, user: User) -> list[Purchase]:
+    """Помечает оплаты пользователя как возвращённые: выдача дней 2–7 прекращается."""
+    purchases = await paid_purchases(session, user)
+    for p in purchases:
+        p.status = "refunded"
+    return purchases
 
 
 async def delivered_map(session: AsyncSession, user: User) -> dict[int, datetime]:
@@ -127,3 +145,16 @@ async def stats(session: AsyncSession) -> dict[str, int]:
             select(func.count()).select_from(User).where(User.is_blocked.is_(True))
         ),
     }
+
+
+async def stats_by_source(session: AsyncSession) -> list[tuple[str, int, int]]:
+    """(источник, сколько пришло, сколько оплатили)"""
+    paid_users = select(Purchase.user_id).where(Purchase.status == "paid")
+    rows = await session.execute(
+        select(
+            func.coalesce(User.source, "—"),
+            func.count(User.id),
+            func.count(User.id).filter(User.id.in_(paid_users)),
+        ).group_by(func.coalesce(User.source, "—")).order_by(func.count(User.id).desc())
+    )
+    return [(src, int(n), int(p)) for src, n, p in rows.all()]

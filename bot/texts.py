@@ -45,7 +45,7 @@ OFFER = (
     "Побудь с этим.\n\n"
     "Если хочешь продолжить, впереди ещё шесть дней:\n"
     "{days}\n\n"
-    "<b>Дни 2–7 — {price} ₽.</b> Один раз, без подписок. "
+    "<b>Дни 2–7 — {price}.</b> Один раз, без подписок. "
     "Всё, что откроется, останется у тебя в боте."
 )
 
@@ -105,8 +105,72 @@ HELP = (
     "/start — начало и текущий статус\n"
     "/days — мои дни\n"
     "/restore — восстановить доступ\n"
+    "/terms — условия и возврат\n"
+    "/paysupport — вопросы по оплате\n"
     "/help — эта подсказка\n\n"
     + DISCLAIMER
 )
 
 TZ_LABELS = {"Europe/Moscow": "Москвы"}
+
+# --- Оплата ---
+
+INVOICE_LABEL = "Дни 2–7"
+INVOICE_DESCRIPTION = (
+    "Дни 2–7 пути: тело, ожидания, тень, желания, красота, выбор. "
+    "Каждый день — аудиопрактика, вопросы, задание и аффирмация. Один раз, без подписок."
+)
+BTN_BUY_STARS = "Продолжить путь — {stars} ⭐"
+PAYMENT_UNAVAILABLE = "Оплата сейчас недоступна. Попробуй чуть позже."
+ALREADY_PAID_SHORT = "Доступ уже оплачен — повторно платить не нужно."
+REFUNDED = (
+    "Оплата возвращена, доступ к следующим дням закрыт. "
+    "Дни, которые ты уже получила, остаются в «Мои дни». Спасибо, что была на этом пути."
+)
+
+
+def _legal_links(config) -> str:
+    links = []
+    if config.offer_url:
+        links.append(f'<a href="{config.offer_url}">оферта</a>')
+    if config.privacy_url:
+        links.append(f'<a href="{config.privacy_url}">политика обработки данных</a>')
+    return ", ".join(links)
+
+
+def before_invoice(config) -> str:
+    text = "Ниже — счёт на дни 2–7. После оплаты бот сразу откроет доступ."
+    links = _legal_links(config)
+    if links:
+        text += f"\n\nОплачивая, ты принимаешь условия: {links}."
+    return text
+
+
+def terms(config) -> str:
+    text = (
+        f"<b>Условия — {COURSE}</b>\n\n"
+        "День 1 бесплатный. Дни 2–7 открываются после разовой оплаты, по одному дню каждое утро. "
+        "Доступ привязан к Telegram-аккаунту.\n\n"
+        "Курс — практика самопознания, не психотерапия, не лечение и не диагностика. "
+        "Результат зависит от тебя и не гарантируется.\n\n"
+        "Если курс не подошёл, напиши в /paysupport в течение 14 дней после оплаты — "
+        "вернём деньги. Дни, которые уже открылись, останутся у тебя."
+    )
+    links = _legal_links(config)
+    if links:
+        text += f"\n\nДокументы: {links}."
+    return text
+
+
+def paysupport(config) -> str:
+    contact = config.support_contact or CHANNEL_URL
+    return (
+        "Вопросы по оплате и возвратам: напиши сюда — " + contact + "\n\n"
+        "Укажи, пожалуйста, дату оплаты и свой Telegram-ник. Ответим в течение 1–2 рабочих дней."
+    )
+
+
+def price_label(config) -> str:
+    if config.payment_mode == "stars":
+        return f"{config.stars_price} ⭐"
+    return f"{config.price_rub} ₽"

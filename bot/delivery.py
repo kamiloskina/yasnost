@@ -40,7 +40,7 @@ async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config
     elif not paid:
         await bot.send_message(
             chat_id,
-            texts.OFFER.format(days=keyboards.days_list(2), price=config.price_rub),
+            texts.OFFER.format(days=keyboards.days_list(2), price=texts.price_label(config)),
             reply_markup=keyboards.offer(config),
         )
     else:
@@ -120,6 +120,9 @@ async def run_scheduler(
                     user = await session.get(User, uid)
                     if user is not None:
                         await deliver_if_due(bot, session, user, config)
+            if config.autopost:
+                from bot.channel import publish_due
+                await publish_due(bot, sessionmaker, config)
         except asyncio.CancelledError:
             raise
         except Exception:

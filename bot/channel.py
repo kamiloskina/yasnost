@@ -1,0 +1,103 @@
+"""Автопостинг в канал по расписанию.
+
+Посты лежат в content/channel/ и называются `ГГГГ-ММ-ДД_ЧЧММ_название.md`, например
+`2026-11-10_1900_kto-ty-bez-roli.md`. Время — по DEFAULT_TIMEZONE (по умолчанию Москва).
+Текст — Telegram HTML. Строка `@button Текст кнопки | https://ссылка` в конце поста
+добавляет кнопку под постом.
+
+Бот публикует пост, когда наступило его время, но не позже чем через 6 часов
+(если бот был выключен дольше, старые посты пропускаются, чтобы не завалить канал).
+Каждый пост публикуется один раз: факт публикации хранится в базе.
+"""
+
+import logging
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from bot.config import Config
+from bot.content import CONTENT_DIR
+from bot.models import ChannelPost
+
+log = logging.getLogger(__name__)
+
+CHANNEL_DIR = CONTENT_DIR / "channel"
+NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})_(.+)\.md$")
+MAX_LATENESS = timedelta(hours=6)
+
+
+@dataclass(frozen=True)
+class Post:
+    slug: str
+    at: datetime  # UTC
+    text: str
+    buttons: list[tuple[str, str]]
+
+
+def parse_post(path: Path, tz_name: str) -> Post | None:
+    m = NAME_RE.match(path.name)
+    if not m:
+        return None
+    day, hh, mm, _ = m.groups()
+    local = datetime.fromisoformat(f"{day}T{hh}:{mm}").replace(tzinfo=ZoneInfo(tz_name))
+    lines, buttons = [], []
+    for line in path.read_text(encoding="utf-8").strip().splitlines():
+        if line.startswith("@button"):
+            label, _, url = line[len("@button"):].partition("|")
+            buttons.append((label.strip(), url.strip()))
+        else:
+            lines.append(line)
+    return Post(slug=path.stem, at=local.astimezone(timezone.utc), text="\n".join(lines).strip(),
+                buttons=buttons)
+
+
+def load_posts(tz_name: str, channel_dir: Path = CHANNEL_DIR) -> list[Post]:
+    if not channel_dir.exists():
+        return []
+    posts = [parse_post(p, tz_name) for p in sorted(channel_dir.glob("*.md"))]
+    return [p for p in posts if p is not None]
+
+
+def due_posts(posts: list[Post], posted: set[str], now: datetime) -> list[Post]:
+    return [p for p in posts if p.slug not in posted and p.at <= now <= p.at + MAX_LATENESS]
+
+
+async def publish_due(
+    bot: Bot, sessionmaker: async_sessionmaker, config: Config, now: datetime | None = None,
+    channel_dir: Path = CHANNEL_DIR,
+) -> list[str]:
+    now = now or datetime.now(timezone.utc)
+    posts = load_posts(config.default_timezone, channel_dir)
+    published: list[str] = []
+    async with sessionmaker() as session:
+        posted = set(await session.scalars(select(ChannelPost.slug)))
+        for post in due_posts(posts, posted, now):
+            try:
+                session.add(ChannelPost(slug=post.slug, posted_at=now))
+                await session.flush()
+            except IntegrityError:
+                await session.rollback()
+                continue
+            markup = None
+            if post.buttons:
+                markup = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=label, url=url)] for label, url in post.buttons
+                ])
+            try:
+                await bot.send_message(config.channel_id, post.text, reply_markup=markup)
+            except Exception:
+                await session.rollback()
+                log.exception("failed to publish %s", post.slug)
+                continue
+            await session.commit()
+            published.append(post.slug)
+            log.info("published channel post %s", post.slug)
+    return published

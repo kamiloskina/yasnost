@@ -23,6 +23,8 @@ class User(Base):
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     # Нажала «Продолжить», когда оплата была закрыта: можно уведомить при открытии продаж.
     wants_purchase: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Откуда пришла: параметр ссылки t.me/Clarity7DaysBot?start=<source> (reels, channel, …)
+    source: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -48,3 +50,12 @@ class Delivery(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     day: Mapped[int] = mapped_column(Integer)
     delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ChannelPost(Base):
+    """Опубликованные автопостингом посты канала (чтобы не публиковать дважды)."""
+    __tablename__ = "channel_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), unique=True)
+    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

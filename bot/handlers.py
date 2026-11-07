@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from aiogram.types import User as TgUser
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -10,26 +10,37 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from bot import keyboards, texts
 from bot.config import Config
 from bot.delivery import deliver_day, deliver_if_due, send_lesson
+from bot.payments import send_invoice
 from bot.services import (
     TOTAL_DAYS, delivered_map, due_time_for_next_day, get_or_create_user, grant_purchase,
-    has_paid, reset_user, stats,
+    has_paid, reset_user, stats, stats_by_source,
 )
 
 router = Router()
 
 
-async def _user(session: AsyncSession, tg: TgUser, config: Config):
+async def _user(session: AsyncSession, tg: TgUser, config: Config, source: str | None = None):
     user = await get_or_create_user(
-        session, tg.id, tg.username, tg.first_name, config.default_timezone
+        session, tg.id, tg.username, tg.first_name, config.default_timezone, source=source
     )
     await session.commit()
     return user
 
 
+def _clean_source(arg: str | None) -> str | None:
+    """t.me/Clarity7DaysBot?start=reels_01 → 'reels_01' (только латиница, цифры, _ и -)."""
+    if not arg:
+        return None
+    cleaned = "".join(ch for ch in arg if ch.isascii() and (ch.isalnum() or ch in "_-"))
+    return cleaned[:64] or None
+
+
 @router.message(CommandStart())
-async def cmd_start(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
+async def cmd_start(
+    message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
+) -> None:
     async with sessionmaker() as session:
-        user = await _user(session, message.from_user, config)
+        user = await _user(session, message.from_user, config, _clean_source(command.args))
         delivered = await delivered_map(session, user)
         paid = await has_paid(session, user)
     if not delivered:
@@ -72,47 +83,63 @@ def _when_text(prev_at: datetime, tz_name: str, hour: int, now: datetime) -> str
     return when
 
 
+async def after_payment(
+    bot: Bot, session: AsyncSession, user, config: Config, chat_id: int, test: bool
+) -> None:
+    """После подтверждённой оплаты: сообщить, когда придёт следующий день, и выдать его, если пора."""
+    note = "\n\n" + texts.PAID_TEST_NOTE if test else ""
+    delivered = await delivered_map(session, user)
+    now = datetime.now(timezone.utc)
+    if not delivered:
+        # Оплатила, не открыв День 1: сразу выдаём его.
+        await bot.send_message(chat_id, texts.PAID_OK.format(when=texts.NEXT_DAY_NOW.format(day=1)) + note)
+        await deliver_day(bot, session, user, 1, config)
+        return
+    last = max(delivered)
+    if last >= TOTAL_DAYS:
+        await bot.send_message(chat_id, texts.PAID_OK.format(when="") + note)
+        return
+    nxt = last + 1
+    due = due_time_for_next_day(delivered[last], user.timezone, config.delivery_hour)
+    if now >= due:
+        when = texts.NEXT_DAY_NOW.format(day=nxt)
+    else:
+        when = texts.NEXT_DAY_LATER.format(
+            day=nxt, when=_when_text(delivered[last], user.timezone, config.delivery_hour, now),
+            hour=config.delivery_hour, tz_label=texts.TZ_LABELS.get(user.timezone, user.timezone),
+        )
+    await bot.send_message(chat_id, texts.PAID_OK.format(when=when) + note)
+    await deliver_if_due(bot, session, user, config, now)
+
+
 @router.callback_query(F.data == "buy")
 async def cb_buy(
     call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
     await call.answer()
+    chat_id = call.from_user.id
     async with sessionmaker() as session:
         user = await _user(session, call.from_user, config)
         if await has_paid(session, user):
-            await call.message.answer(texts.ALREADY_PAID)
+            await bot.send_message(chat_id, texts.ALREADY_PAID)
             return
-        if config.payment_mode != "test":
+        if config.payment_mode == "off":
             user.wants_purchase = True
             await session.commit()
-            await call.message.answer(texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
+            await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
             return
-
+        if config.payment_mode in {"yookassa", "stars"}:
+            user.wants_purchase = True
+            await session.commit()
+            await send_invoice(bot, chat_id, config)
+            return
+        # test
         await grant_purchase(
             session, user, provider="test", provider_payment_id=f"test-{user.tg_id}",
             amount=config.price_rub * 100,
         )
         await session.commit()
-
-        delivered = await delivered_map(session, user)
-        now = datetime.now(timezone.utc)
-        if not delivered:
-            # Оплатила, не открыв День 1: сразу выдаём его.
-            await call.message.answer(texts.PAID_OK.format(when="") + texts.PAID_TEST_NOTE)
-            await deliver_day(bot, session, user, 1, config)
-            return
-        last = max(delivered)
-        nxt = last + 1
-        due = due_time_for_next_day(delivered[last], user.timezone, config.delivery_hour)
-        if now >= due:
-            when = texts.NEXT_DAY_NOW.format(day=nxt)
-        else:
-            when = texts.NEXT_DAY_LATER.format(
-                day=nxt, when=_when_text(delivered[last], user.timezone, config.delivery_hour, now),
-                hour=config.delivery_hour, tz_label=texts.TZ_LABELS.get(user.timezone, user.timezone),
-            )
-        await call.message.answer(texts.PAID_OK.format(when=when) + "\n\n" + texts.PAID_TEST_NOTE)
-        await deliver_if_due(bot, session, user, config, now)
+        await after_payment(bot, session, user, config, chat_id, test=True)
 
 
 async def _show_days(message: Message, tg: TgUser, sessionmaker, config: Config) -> None:
@@ -206,12 +233,15 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
         return
     async with sessionmaker() as session:
         s = await stats(session)
+        sources = await stats_by_source(session)
+    src_lines = "\n".join(f"  {src}: пришли {n}, оплатили {p}" for src, n, p in sources)
     await message.answer(
         "<b>Воронка</b>\n"
         f"Нажали /start: {s['users']}\n"
         f"Открыли День 1: {s['started_day1']}\n"
-        f"Хотели купить (оплата закрыта): {s['wants_purchase']}\n"
+        f"Нажали «купить»: {s['wants_purchase']}\n"
         f"Оплатили: {s['paid']}\n"
         f"Прошли все 7 дней: {s['completed']}\n"
-        f"Заблокировали бота: {s['blocked']}"
+        f"Заблокировали бота: {s['blocked']}\n\n"
+        f"<b>Источники</b> (?start=…)\n{src_lines or '  пока нет'}"
     )

@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+PAYMENT_MODES = {"test", "off", "yookassa", "stars"}
+
 
 def _bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -28,12 +30,20 @@ def _database_url() -> str:
 class Config:
     bot_token: str
     database_url: str
-    payment_mode: str  # "test" | "off"
+    payment_mode: str  # "test" | "off" | "yookassa" | "stars"
     price_rub: int
     delivery_hour: int
     default_timezone: str
     admin_ids: frozenset[int] = field(default_factory=frozenset)
     debug_commands: bool = False
+    yookassa_provider_token: str = ""
+    yookassa_send_receipt: bool = False
+    stars_price: int = 0
+    offer_url: str = ""
+    privacy_url: str = ""
+    support_contact: str = ""
+    channel_id: str = ""
+    autopost: bool = False
 
 
 def load_config() -> Config:
@@ -44,8 +54,18 @@ def load_config() -> Config:
             "или в файл .env для локального запуска."
         )
     payment_mode = os.getenv("PAYMENT_MODE", "test").strip().lower()
-    if payment_mode not in {"test", "off"}:
-        raise SystemExit("PAYMENT_MODE должен быть test или off")
+    if payment_mode not in PAYMENT_MODES:
+        raise SystemExit("PAYMENT_MODE должен быть одним из: " + ", ".join(sorted(PAYMENT_MODES)))
+    provider_token = os.getenv("YOOKASSA_PROVIDER_TOKEN", "").strip()
+    if payment_mode == "yookassa" and not provider_token:
+        raise SystemExit("Для PAYMENT_MODE=yookassa нужен YOOKASSA_PROVIDER_TOKEN (выдаёт @BotFather → Payments)")
+    stars_price = int(os.getenv("STARS_PRICE", "0") or 0)
+    if payment_mode == "stars" and stars_price <= 0:
+        raise SystemExit("Для PAYMENT_MODE=stars задай STARS_PRICE — цену в звёздах")
+    autopost = _bool("AUTOPOST", False)
+    channel_id = os.getenv("CHANNEL_ID", "").strip()
+    if autopost and not channel_id:
+        raise SystemExit("Для AUTOPOST=true задай CHANNEL_ID, например @onaotkrytaya")
     admin_ids = frozenset(
         int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x
     )
@@ -58,4 +78,12 @@ def load_config() -> Config:
         default_timezone=os.getenv("DEFAULT_TIMEZONE", "Europe/Moscow"),
         admin_ids=admin_ids,
         debug_commands=_bool("DEBUG_COMMANDS", False),
+        yookassa_provider_token=provider_token,
+        yookassa_send_receipt=_bool("YOOKASSA_SEND_RECEIPT", False),
+        stars_price=stars_price,
+        offer_url=os.getenv("OFFER_URL", "").strip(),
+        privacy_url=os.getenv("PRIVACY_URL", "").strip(),
+        support_contact=os.getenv("SUPPORT_CONTACT", "").strip(),
+        channel_id=channel_id,
+        autopost=autopost,
     )

@@ -12,6 +12,7 @@ from bot.config import load_config
 from bot.db import init_db, make_engine
 from bot.delivery import run_scheduler
 from bot.handlers import router
+from bot.payments import router as payments_router
 from bot.keyboards import titles
 
 
@@ -30,13 +31,16 @@ async def main() -> None:
         BotCommand(command="start", description="Начало и мой статус"),
         BotCommand(command="days", description="Мои дни"),
         BotCommand(command="restore", description="Восстановить доступ"),
+        BotCommand(command="terms", description="Условия и возврат"),
+        BotCommand(command="paysupport", description="Вопросы по оплате"),
         BotCommand(command="help", description="Помощь"),
     ])
     dp = Dispatcher(config=config, sessionmaker=sessionmaker)
+    dp.include_router(payments_router)
     dp.include_router(router)
 
     scheduler = asyncio.create_task(run_scheduler(bot, sessionmaker, config))
-    logging.info("bot started, payment_mode=%s", config.payment_mode)
+    logging.info("bot started, payment_mode=%s, autopost=%s", config.payment_mode, config.autopost)
     try:
         await dp.start_polling(bot)
     finally:
