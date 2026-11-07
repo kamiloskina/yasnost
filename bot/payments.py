@@ -209,7 +209,3 @@ async def cmd_refund(
 async def cmd_terms(message: Message, config: Config) -> None:
     await message.answer(texts.terms(config))
 
-
-@router.message(Command("paysupport"))
-async def cmd_paysupport(message: Message, config: Config) -> None:
-    await message.answer(texts.paysupport(config))

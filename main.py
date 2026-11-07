@@ -16,6 +16,7 @@ from bot.delivery import run_scheduler
 from bot.handlers import router
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
+from bot.support import router as support_router
 from bot.payments import router as payments_router
 from bot.keyboards import titles
 
@@ -64,7 +65,7 @@ async def main() -> None:
         BotCommand(command="tracker", description="Трекер на 30 дней"),
         BotCommand(command="restore", description="Восстановить доступ"),
         BotCommand(command="terms", description="Условия и возврат"),
-        BotCommand(command="paysupport", description="Вопросы по оплате"),
+        BotCommand(command="paysupport", description="Написать в поддержку"),
         BotCommand(command="help", description="Помощь"),
     ]
     admin_commands = public_commands + [
@@ -76,6 +77,7 @@ async def main() -> None:
         BotCommand(command="reset", description="Админ: сбросить мой прогресс"),
         BotCommand(command="refund", description="Админ: возврат"),
         BotCommand(command="history", description="Админ: история пользователя"),
+        BotCommand(command="forget", description="Админ: удалить данные пользователя"),
     ]
     await bot.set_my_commands(public_commands)
     # Админские команды видны в меню только администраторам
@@ -90,6 +92,7 @@ async def main() -> None:
     dp.include_router(payments_router)
     dp.include_router(audio_router)
     dp.include_router(media_router)
+    dp.include_router(support_router)
     dp.include_router(router)
 
     health = await start_health_server()

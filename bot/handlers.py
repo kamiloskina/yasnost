@@ -362,3 +362,36 @@ async def cmd_history(
     for d in sorted(delivered):
         lines.append(f"— День {d}: {delivered[d].astimezone(tz):%d.%m.%Y %H:%M}")
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("forget"))
+async def cmd_forget(
+    message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    """Админ: /forget <telegram_id> — удалить данные по запросу человека (152-ФЗ).
+    Прогресс и профиль стираются; сведения об оплатах остаются (их нужно хранить по закону)."""
+    if not config.is_admin(message.from_user.id):
+        return
+    from sqlalchemy import delete, select
+
+    from bot.models import Delivery, User
+    try:
+        tg_id = int((command.args or "").strip())
+    except ValueError:
+        await message.answer("Формат: /forget 123456789 (Telegram ID)")
+        return
+    async with sessionmaker() as session:
+        user = await session.scalar(select(User).where(User.tg_id == tg_id))
+        if user is None:
+            await message.answer("Такого пользователя в базе нет.")
+            return
+        await session.execute(delete(Delivery).where(Delivery.user_id == user.id))
+        user.username = None
+        user.first_name = None
+        user.source = None
+        user.wants_purchase = False
+        await session.commit()
+    await message.answer(
+        "Удалила имя, ник, источник и прогресс. Сведения об оплатах сохранены — "
+        "их нужно хранить для налоговой. Напиши человеку, что запрос выполнен."
+    )
