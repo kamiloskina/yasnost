@@ -7,15 +7,35 @@ from aiogram.types import InlineKeyboardButton as Btn
 from aiogram.types import InlineKeyboardMarkup as Kb
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from bot import keyboards
+import logging
+
+from aiogram.exceptions import TelegramForbiddenError
+from sqlalchemy import select
+
+from bot import keyboards, texts
+from bot.models import Delivery, User
 from bot.config import Config
 from bot.lesson_audio import CACHE, remove_audio, set_audio, send_cached
 from bot.services import TOTAL_DAYS
 
 router = Router()
 
+log = logging.getLogger(__name__)
+
 # {telegram_id админа: день}, для которого ждём файл
 pending: dict[int, int] = {}
+# Какие записи уже разосланы (день, file_id) — защита от повторного нажатия
+broadcasted: set[tuple[int, str]] = set()
+
+
+async def _receivers(sessionmaker: async_sessionmaker, day: int) -> list[int]:
+    """Кто уже получил этот день (и не заблокировал бота)."""
+    async with sessionmaker() as session:
+        rows = await session.scalars(
+            select(User.tg_id).join(Delivery, Delivery.user_id == User.id)
+            .where(Delivery.day == day, User.is_blocked.is_(False))
+        )
+        return list(rows)
 
 
 @router.message(Command("audio"))
@@ -85,3 +105,39 @@ async def on_audio(message: Message, sessionmaker: async_sessionmaker, config: C
     await set_audio(sessionmaker, day, kind, file_id)
     await message.answer(f"Аудиопрактика для дня {day} загружена ✓ Вот как её увидят участницы:")
     await send_cached(message.bot, uid, day, None)
+    receivers = [r for r in await _receivers(sessionmaker, day) if r != uid]
+    if receivers:
+        await message.answer(
+            f"День {day} уже получили без аудио: {len(receivers)} чел. Отправить им запись?",
+            reply_markup=Kb(inline_keyboard=[[Btn(text=f"Отправить {len(receivers)} чел.",
+                                                  callback_data=f"aud_send:{day}")]]),
+        )
+
+
+@router.callback_query(F.data.startswith("aud_send:"))
+async def cb_audio_broadcast(call: CallbackQuery, sessionmaker: async_sessionmaker, config: Config) -> None:
+    await call.answer()
+    if not config.is_admin(call.from_user.id):
+        return
+    day = int(call.data.split(":", 1)[1])
+    item = CACHE.get(day)
+    if item is None:
+        await call.message.answer("Для этого дня нет загруженного аудио.")
+        return
+    key = (day, item[1])
+    if key in broadcasted:
+        await call.message.answer("Эту запись уже отправляли — повторно не шлю.")
+        return
+    broadcasted.add(key)
+    sent = 0
+    for tg_id in await _receivers(sessionmaker, day):
+        if tg_id == call.from_user.id:
+            continue
+        try:
+            await send_cached(call.bot, tg_id, day, texts.audio_ready(day))
+            sent += 1
+        except TelegramForbiddenError:
+            continue
+        except Exception:
+            log.exception("cannot send day %s audio to %s", day, tg_id)
+    await call.message.answer(f"Отправила аудио к Дню {day}: {sent} чел. ✓")

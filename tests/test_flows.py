@@ -682,3 +682,32 @@ async def test_channel_buttons_get_per_post_tag(sm, tmp_path):
     await h.click("day1")
     calls = await h.text("/stats", uid=ADMIN)
     assert any("ch1109: пришли 1 → День 1: 1 → оплатили 0" in t for t in texts_of(calls))
+
+
+async def test_practice_script_not_sent_without_audio(sm):
+    h = Harness(BASE, sm)
+    calls = await h.click("day1")
+    t = texts_of(calls)
+    assert not any("Сядь удобно. Поставь стопы" in x for x in t)
+    assert any("Аудиопрактика «Кто я, когда никто не смотрит»" in x and "скоро появится" in x for x in t)
+    assert any("<b>Вопросы</b>" in x for x in t)  # остальной день на месте
+
+
+async def test_audio_broadcast_to_day_receivers_once(sm):
+    from aiogram.methods import SendAudio
+    from aiogram.types import Audio
+    from bot import admin_audio
+    admin_audio.broadcasted.clear()
+    h = Harness(BASE, sm)
+    await h.click("day1")              # получила День 1 без аудио
+    await h.click("day1", uid=777)     # ещё одна участница
+    await h.click("aud:1", uid=ADMIN)
+    calls = await h.feed(message=h._msg(ADMIN, audio=Audio(file_id="A1", file_unique_id="a", duration=600)))
+    assert any("уже получили без аудио: 2 чел." in t for t in texts_of(calls))
+    calls = await h.click("aud_send:1", uid=ADMIN)
+    got = sorted(c.chat_id for c in calls if isinstance(c, SendAudio))
+    assert got == [BUYER, 777] and any("Отправила аудио к Дню 1: 2 чел." in t for t in texts_of(calls))
+    calls = await h.click("aud_send:1", uid=ADMIN)  # повторное нажатие
+    assert not any(isinstance(c, SendAudio) for c in calls)
+    calls = await h.click("aud_send:1", uid=BUYER)  # не админ: только снятие «часиков» с кнопки
+    assert not any(isinstance(c, (SendAudio, SendMessage)) for c in calls)
