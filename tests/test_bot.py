@@ -197,3 +197,14 @@ def test_channel_posts_are_valid():
         assert 0 < len(p.text) <= 4096, p.slug
         for label, url in p.buttons:
             assert label and url.startswith("https://"), p.slug
+
+
+def test_database_url_uses_persistent_dir(tmp_path, monkeypatch):
+    import bot.config as cfg
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(cfg, "PERSISTENT_DIR", str(tmp_path))
+    assert cfg._database_url() == f"sqlite+aiosqlite:///{tmp_path}/bot.db"
+    monkeypatch.setattr(cfg, "PERSISTENT_DIR", str(tmp_path / "missing"))
+    assert cfg._database_url() == "sqlite+aiosqlite:///data/bot.db"
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
+    assert cfg._database_url() == "postgresql+asyncpg://u:p@h/db"

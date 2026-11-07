@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PAYMENT_MODES = {"test", "off", "yookassa", "stars"}
+PERSISTENT_DIR = os.getenv("PERSISTENT_DIR", "/data")
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -18,6 +19,10 @@ def _bool(name: str, default: bool) -> bool:
 def _database_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip()
     if not url:
+        # Amvera и подобные хостинги дают постоянную папку /data — храним базу там,
+        # чтобы она не стиралась при обновлении бота. Локально — ./data/bot.db.
+        if os.path.isdir(PERSISTENT_DIR) and os.access(PERSISTENT_DIR, os.W_OK):
+            return f"sqlite+aiosqlite:///{PERSISTENT_DIR}/bot.db"
         return "sqlite+aiosqlite:///data/bot.db"
     # Railway отдаёт postgres://… или postgresql://…, а SQLAlchemy async нужен драйвер asyncpg.
     for prefix in ("postgres://", "postgresql://"):
