@@ -12,9 +12,10 @@ from bot.config import Config
 from bot.delivery import deliver_day, deliver_if_due, send_lesson
 from bot.payments import send_invoice
 from bot.services import (
-    TOTAL_DAYS, delivered_map, due_time_for_next_day, get_or_create_user, grant_purchase,
-    has_paid, reset_user, stats, stats_by_source,
+    TOTAL_DAYS, TRACKER, delivered_map, due_time_for_next_day, get_or_create_user,
+    grant_purchase, has_paid, reset_user, stats, stats_by_source,
 )
+from bot.tracker import offer_tracker, send_tracker
 
 router = Router()
 
@@ -39,8 +40,13 @@ def _clean_source(arg: str | None) -> str | None:
 async def cmd_start(
     message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
+    source = _clean_source(command.args)
     async with sessionmaker() as session:
-        user = await _user(session, message.from_user, config, _clean_source(command.args))
+        user = await _user(session, message.from_user, config, source)
+        if source and source.startswith("tracker"):
+            # Ссылка из канала на трекер: t.me/Clarity7DaysBot?start=tracker
+            await offer_tracker(message.bot, session, user, config)
+            return
         delivered = await delivered_map(session, user)
         paid = await has_paid(session, user)
     if not delivered:
@@ -146,10 +152,11 @@ async def _show_days(message: Message, tg: TgUser, sessionmaker, config: Config)
     async with sessionmaker() as session:
         user = await _user(session, tg, config)
         delivered = await delivered_map(session, user)
-    if not delivered:
+        has_tracker = await has_paid(session, user, TRACKER)
+    if not delivered and not has_tracker:
         await message.answer(texts.MY_DAYS_EMPTY, reply_markup=keyboards.about())
     else:
-        await message.answer(texts.MY_DAYS, reply_markup=keyboards.days(list(delivered)))
+        await message.answer(texts.MY_DAYS, reply_markup=keyboards.days(list(delivered), has_tracker))
 
 
 @router.message(Command("days"))
@@ -179,6 +186,54 @@ async def cb_open(
         await call.message.answer(texts.DAY_LOCKED)
         return
     await send_lesson(bot, call.from_user.id, day)
+
+
+@router.message(Command("tracker"))
+async def cmd_tracker(
+    message: Message, bot: Bot, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    async with sessionmaker() as session:
+        user = await _user(session, message.from_user, config)
+        await offer_tracker(bot, session, user, config)
+
+
+@router.callback_query(F.data == "tracker")
+async def cb_tracker(
+    call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    await call.answer()
+    async with sessionmaker() as session:
+        user = await _user(session, call.from_user, config)
+        await offer_tracker(bot, session, user, config)
+
+
+@router.callback_query(F.data == "buy:tracker")
+async def cb_buy_tracker(
+    call: CallbackQuery, bot: Bot, sessionmaker: async_sessionmaker, config: Config
+) -> None:
+    await call.answer()
+    chat_id = call.from_user.id
+    async with sessionmaker() as session:
+        user = await _user(session, call.from_user, config)
+        if await has_paid(session, user, TRACKER):
+            await bot.send_message(chat_id, texts.TRACKER_ALREADY)
+            await send_tracker(bot, chat_id)
+            return
+        if config.payment_mode == "off":
+            user.wants_purchase = True
+            await session.commit()
+            await bot.send_message(chat_id, texts.PAYMENT_CLOSED)
+            return
+        if config.payment_mode in {"yookassa", "stars"}:
+            await send_invoice(bot, chat_id, config, TRACKER)
+            return
+        await grant_purchase(
+            session, user, provider="test", provider_payment_id=f"test-tracker-{user.tg_id}",
+            amount=config.tracker_price_rub * 100, product=TRACKER,
+        )
+        await session.commit()
+    await bot.send_message(chat_id, texts.TRACKER_PAID_OK + "\n\n" + texts.PAID_TEST_NOTE)
+    await send_tracker(bot, chat_id)
 
 
 @router.message(Command("restore"))
@@ -240,7 +295,9 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
         f"Нажали /start: {s['users']}\n"
         f"Открыли День 1: {s['started_day1']}\n"
         f"Нажали «купить»: {s['wants_purchase']}\n"
-        f"Оплатили: {s['paid']}\n"
+        f"Оплатили путь: {s['paid']}\n"
+        f"Купили трекер отдельно: {s['tracker_paid']}\n"
+        f"Получили трекер в подарок: {s['tracker_gift']}\n"
         f"Прошли все 7 дней: {s['completed']}\n"
         f"Заблокировали бота: {s['blocked']}\n\n"
         f"<b>Источники</b> (?start=…)\n{src_lines or '  пока нет'}"

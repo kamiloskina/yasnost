@@ -9,7 +9,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import (
-    AnswerPreCheckoutQuery, RefundStarPayment, SendInvoice, SendMessage,
+    AnswerPreCheckoutQuery, RefundStarPayment, SendDocument, SendInvoice, SendMessage,
 )
 from aiogram.types import (
     CallbackQuery, Chat, Message, PreCheckoutQuery, SuccessfulPayment, Update,
@@ -43,7 +43,7 @@ class FakeSession(BaseSession):
 
     async def make_request(self, bot, method, timeout=None):
         self.calls.append(method)
-        if isinstance(method, (SendMessage, SendInvoice)):
+        if isinstance(method, (SendMessage, SendInvoice, SendDocument)):
             return Message(message_id=1, date=datetime.now(), chat=Chat(id=1, type="private"))
         return True
 
@@ -93,8 +93,8 @@ class Harness:
             id="pc", from_user=self._user(uid), currency="XTR", total_amount=650,
             invoice_payload=payload))
 
-    async def paid(self, charge="ch-1", uid=BUYER, currency="XTR", amount=650):
-        sp = SuccessfulPayment(currency=currency, total_amount=amount, invoice_payload=PAYLOAD,
+    async def paid(self, charge="ch-1", uid=BUYER, currency="XTR", amount=650, payload=PAYLOAD):
+        sp = SuccessfulPayment(currency=currency, total_amount=amount, invoice_payload=payload,
                                telegram_payment_charge_id=charge, provider_payment_charge_id="p-" + charge)
         return await self.feed(message=self._msg(uid, successful_payment=sp))
 
@@ -259,3 +259,134 @@ async def test_autopost_status(sm, tmp_path):
     h = Harness(replace(BASE, autopost=True), sm)
     text = await autopost_status(h.bot, sm, h.config, datetime(2026, 11, 10, tzinfo=timezone.utc), tmp_path)
     assert "включён" in text and "16.11 19:00 — Знакомство" in text and "В очереди:</b> 1" in text
+
+
+async def test_post_with_poll(sm, tmp_path):
+    from aiogram.methods import SendPoll
+    _post(tmp_path, "2026-11-09_1900_q.md",
+          "Вопрос\n@poll Как ты?\n@option Хорошо\n@option Устала")
+    h = Harness(BASE, sm)
+    now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
+    assert await publish_due(h.bot, sm, BASE, now, tmp_path) == ["2026-11-09_1900_q"]
+    polls = [c for c in h.session.calls if isinstance(c, SendPoll)]
+    assert len(polls) == 1 and polls[0].question == "Как ты?" and len(polls[0].options) == 2
+    texts = [c.text for c in h.session.calls if isinstance(c, SendMessage)]
+    assert texts == ["Вопрос"]
+
+
+
+# ---------- трекер ----------
+
+def docs_of(calls):
+    return [c for c in calls if isinstance(c, SendDocument)]
+
+
+async def _finish_course(h):
+    await h.click("day1")
+    await h.click("buy")
+    calls = []
+    for _ in range(6):
+        calls = await h.text("/next")
+    return calls
+
+
+async def test_gift_after_day7_once(sm):
+    h = Harness(BASE, sm)
+    calls = await _finish_course(h)
+    assert len(docs_of(calls)) == 1
+    assert any("подарок" in t for t in texts_of(calls))
+    async with sm() as s:
+        statuses = list(await s.scalars(select(Purchase.provider).where(Purchase.product == "tracker")))
+        assert statuses == ["gift"]
+    # трекер есть в «Мои дни»
+    calls = await h.text("/days")
+    kb = [c for c in calls if isinstance(c, SendMessage)][0].reply_markup
+    assert any(b.callback_data == "tracker" for row in kb.inline_keyboard for b in row)
+    # /tracker просто присылает файл ещё раз, без предложения купить
+    calls = await h.text("/tracker")
+    assert len(docs_of(calls)) == 1 and not any("Купить" in t for t in texts_of(calls))
+
+
+async def test_offer_mentions_secret_gift(sm):
+    h = Harness(BASE, sm)
+    calls = await h.click("day1")
+    assert any("секретный подарок" in t for t in texts_of(calls))
+
+
+async def test_buy_tracker_separately_test_mode(sm):
+    h = Harness(BASE, sm)
+    calls = await h.text("/start tracker")
+    offer = texts_of(calls)
+    assert any("490 ₽" in t and "в подарок после седьмого дня" in t for t in offer)
+    calls = await h.click("buy:tracker")
+    assert len(docs_of(calls)) == 1
+    async with sm() as s:
+        u = await s.scalar(select(User))
+        assert u.source == "tracker"
+    # курс при этом не открыт
+    calls = await h.text("/next")
+    assert len(docs_of(calls)) == 0
+
+
+async def test_no_duplicate_gift_if_tracker_bought(sm):
+    h = Harness(BASE, sm)
+    await h.click("buy:tracker")
+    calls = await _finish_course(h)
+    assert len(docs_of(calls)) == 0
+    assert not any("Я обещала подарок" in t for t in texts_of(calls))
+
+
+async def test_tracker_stars_payment(sm):
+    from bot.payments import TRACKER_PAYLOAD
+    cfg = replace(BASE, payment_mode="stars", tracker_stars_price=320)
+    h = Harness(cfg, sm)
+    calls = await h.click("buy:tracker")
+    inv = [c for c in calls if isinstance(c, SendInvoice)]
+    assert inv and inv[0].payload == TRACKER_PAYLOAD and inv[0].prices[0].amount == 320
+    calls = await h.feed(pre_checkout_query=PreCheckoutQuery(
+        id="pc", from_user=h._user(BUYER), currency="XTR", total_amount=320,
+        invoice_payload=TRACKER_PAYLOAD))
+    assert [c.ok for c in calls if isinstance(c, AnswerPreCheckoutQuery)] == [True]
+    calls = await h.paid("tr-1", amount=320, payload=TRACKER_PAYLOAD)
+    assert len(docs_of(calls)) == 1
+    async with sm() as s:
+        rows = (await s.execute(select(Purchase.product, Purchase.amount))).all()
+        assert rows == [("tracker", 320)]
+    # повторный счёт на трекер Telegram не пропустит, а на курс — пропустит
+    calls = await h.feed(pre_checkout_query=PreCheckoutQuery(
+        id="pc2", from_user=h._user(BUYER), currency="XTR", total_amount=320,
+        invoice_payload=TRACKER_PAYLOAD))
+    assert [c.ok for c in calls if isinstance(c, AnswerPreCheckoutQuery)] == [False]
+    calls = await h.pre_checkout()
+    assert [c.ok for c in calls if isinstance(c, AnswerPreCheckoutQuery)] == [True]
+
+
+async def test_tracker_stats(sm):
+    h = Harness(BASE, sm)
+    await h.click("buy:tracker")
+    calls = await h.text("/stats", uid=ADMIN)
+    assert any("Купили трекер отдельно: 1" in t for t in texts_of(calls))
+
+
+def test_tracker_pdf_exists():
+    from bot.tracker import TRACKER_PDF
+    assert TRACKER_PDF.exists() and TRACKER_PDF.stat().st_size > 100_000
+
+
+async def test_migration_adds_product_column(tmp_path):
+    from sqlalchemy import text
+    url = f"sqlite+aiosqlite:///{tmp_path}/old.db"
+    engine = make_engine(url)
+    async with engine.begin() as conn:  # база «старой» версии без колонки product
+        await conn.execute(text(
+            "CREATE TABLE purchases (id INTEGER PRIMARY KEY, user_id INTEGER, provider VARCHAR(32), "
+            "provider_payment_id VARCHAR(128) UNIQUE, amount INTEGER, currency VARCHAR(8), "
+            "status VARCHAR(16), created_at DATETIME)"))
+        await conn.execute(text(
+            "INSERT INTO purchases (user_id, provider, provider_payment_id, amount, currency, status) "
+            "VALUES (1, 'test', 'old-1', 99000, 'RUB', 'paid')"))
+    maker = await init_db(engine)
+    async with maker() as s:
+        assert list(await s.scalars(select(Purchase.product))) == ["course"]
+    await init_db(engine)  # повторный запуск ничего не ломает
+    await engine.dispose()

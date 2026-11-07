@@ -84,8 +84,11 @@ async def deliver_day(
     paid = await has_paid(session, user)
     try:
         await send_tail(bot, tg_id, day, paid, config)
+        if day == TOTAL_DAYS and paid:
+            from bot.tracker import gift_tracker
+            await gift_tracker(bot, session, user, config)
     except Exception:
-        log.exception("failed to send tail for day %s to %s", day, tg_id)
+        log.exception("failed to send tail/gift for day %s to %s", day, tg_id)
     return True
 
 
@@ -112,7 +115,9 @@ async def run_scheduler(
                 user_ids = (await session.scalars(
                     select(User.id).where(
                         User.is_blocked.is_(False),
-                        User.id.in_(select(Purchase.user_id).where(Purchase.status == "paid")),
+                        User.id.in_(select(Purchase.user_id).where(
+                            Purchase.status == "paid", Purchase.product == "course"
+                        )),
                     )
                 )).all()
             for uid in user_ids:

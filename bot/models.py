@@ -33,7 +33,9 @@ class Purchase(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    provider: Mapped[str] = mapped_column(String(32))  # test | yookassa | stars
+    # Продукт: course — дни 2–7 пути, tracker — трекер на 30 дней
+    product: Mapped[str] = mapped_column(String(16), default="course", server_default="course")
+    provider: Mapped[str] = mapped_column(String(32))  # test | yookassa | stars | gift
     # Уникальный ID платежа у провайдера: повторное уведомление не создаст вторую покупку.
     provider_payment_id: Mapped[str] = mapped_column(String(128), unique=True)
     amount: Mapped[int] = mapped_column(Integer)  # в копейках / минимальных единицах
