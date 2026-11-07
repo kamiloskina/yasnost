@@ -2,8 +2,10 @@
 
 Посты лежат в content/channel/ и называются `ГГГГ-ММ-ДД_ЧЧММ_название.md`, например
 `2026-11-10_1900_kto-ty-bez-roli.md`. Время — по DEFAULT_TIMEZONE (по умолчанию Москва).
-Текст — Telegram HTML. Строка `@button Текст кнопки | https://ссылка` в конце поста
-добавляет кнопку под постом.
+Текст — Telegram HTML. Служебные строки (в любом месте файла):
+- `@button Текст кнопки | https://ссылка` — кнопка под постом;
+- `@poll Вопрос опроса` и следом 2–10 строк `@option Вариант` — анонимный опрос,
+  который публикуется сразу после поста.
 
 Бот публикует пост, когда наступило его время, но не позже чем через 6 часов
 (если бот был выключен дольше, старые посты пропускаются, чтобы не завалить канал).
@@ -40,6 +42,7 @@ class Post:
     at: datetime  # UTC
     text: str
     buttons: list[tuple[str, str]]
+    poll: tuple[str, list[str]] | None = None
 
 
 def parse_post(path: Path, tz_name: str) -> Post | None:
@@ -49,14 +52,20 @@ def parse_post(path: Path, tz_name: str) -> Post | None:
     day, hh, mm, _ = m.groups()
     local = datetime.fromisoformat(f"{day}T{hh}:{mm}").replace(tzinfo=ZoneInfo(tz_name))
     lines, buttons = [], []
+    poll_question, poll_options = None, []
     for line in path.read_text(encoding="utf-8").strip().splitlines():
         if line.startswith("@button"):
             label, _, url = line[len("@button"):].partition("|")
             buttons.append((label.strip(), url.strip()))
+        elif line.startswith("@poll"):
+            poll_question = line[len("@poll"):].strip()
+        elif line.startswith("@option"):
+            poll_options.append(line[len("@option"):].strip())
         else:
             lines.append(line)
+    poll = (poll_question, poll_options) if poll_question else None
     return Post(slug=path.stem, at=local.astimezone(timezone.utc), text="\n".join(lines).strip(),
-                buttons=buttons)
+                buttons=buttons, poll=poll)
 
 
 def load_posts(tz_name: str, channel_dir: Path = CHANNEL_DIR) -> list[Post]:
@@ -100,6 +109,13 @@ async def publish_due(
             await session.commit()
             published.append(post.slug)
             log.info("published channel post %s", post.slug)
+            if post.poll:
+                question, options = post.poll
+                try:
+                    await bot.send_poll(config.channel_id, question=question, options=options,
+                                        is_anonymous=True)
+                except Exception:
+                    log.exception("failed to publish poll for %s", post.slug)
     return published
 
 

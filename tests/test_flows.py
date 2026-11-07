@@ -259,3 +259,16 @@ async def test_autopost_status(sm, tmp_path):
     h = Harness(replace(BASE, autopost=True), sm)
     text = await autopost_status(h.bot, sm, h.config, datetime(2026, 11, 10, tzinfo=timezone.utc), tmp_path)
     assert "включён" in text and "16.11 19:00 — Знакомство" in text and "В очереди:</b> 1" in text
+
+
+async def test_post_with_poll(sm, tmp_path):
+    from aiogram.methods import SendPoll
+    _post(tmp_path, "2026-11-09_1900_q.md",
+          "Вопрос\n@poll Как ты?\n@option Хорошо\n@option Устала")
+    h = Harness(BASE, sm)
+    now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
+    assert await publish_due(h.bot, sm, BASE, now, tmp_path) == ["2026-11-09_1900_q"]
+    polls = [c for c in h.session.calls if isinstance(c, SendPoll)]
+    assert len(polls) == 1 and polls[0].question == "Как ты?" and len(polls[0].options) == 2
+    texts = [c.text for c in h.session.calls if isinstance(c, SendMessage)]
+    assert texts == ["Вопрос"]

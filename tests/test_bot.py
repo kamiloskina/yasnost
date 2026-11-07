@@ -197,6 +197,10 @@ def test_channel_posts_are_valid():
         assert 0 < len(p.text) <= 4096, p.slug
         for label, url in p.buttons:
             assert label and url.startswith("https://"), p.slug
+        if p.poll:
+            q, opts = p.poll
+            assert q and len(q) <= 300 and 2 <= len(opts) <= 10, p.slug
+            assert all(0 < len(o) <= 100 for o in opts), p.slug
 
 
 def test_database_url_uses_persistent_dir(tmp_path, monkeypatch):
