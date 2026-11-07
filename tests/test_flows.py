@@ -24,6 +24,7 @@ from bot.handlers import _clean_source
 from bot.handlers import router as main_router
 from bot.models import Purchase, User
 from bot.payments import PAYLOAD, invoice_params
+from bot.admin_media import router as media_router
 from bot.payments import router as pay_router
 
 ADMIN = 1
@@ -60,9 +61,10 @@ class Harness:
         self.session = FakeSession()
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
-        for r in (pay_router, main_router):  # роутеры модульные: отвязываем от прошлого теста
+        for r in (pay_router, media_router, main_router):  # отвязываем от прошлого теста
             r._parent_router = None
         self.dp.include_router(pay_router)
+        self.dp.include_router(media_router)
         self.dp.include_router(main_router)
         self.sm = sm
         self.n = 0
@@ -390,3 +392,53 @@ async def test_migration_adds_product_column(tmp_path):
         assert list(await s.scalars(select(Purchase.product))) == ["course"]
     await init_db(engine)  # повторный запуск ничего не ломает
     await engine.dispose()
+
+
+
+# ---------- голосовое к посту ----------
+
+async def test_admin_attaches_voice_and_it_goes_before_text(sm, tmp_path):
+    from aiogram.methods import SendVoice
+    from aiogram.types import Voice
+    _post(tmp_path, "2026-11-09_1900_pochemu.md", "История\n@button В бот | https://t.me/x")
+    h = Harness(BASE, sm)
+    calls = await h.click("media:2026-11-09_1900_pochemu", uid=ADMIN)
+    assert any("Запиши голосовое" in t for t in texts_of(calls))
+    voice = Voice(file_id="VOICE1", file_unique_id="u1", duration=60)
+    calls = await h.feed(message=h._msg(ADMIN, voice=voice))
+    assert any("прикреплено к посту 09.11" in t for t in texts_of(calls))
+    # замена записи
+    await h.click("media:2026-11-09_1900_pochemu", uid=ADMIN)
+    await h.feed(message=h._msg(ADMIN, voice=Voice(file_id="VOICE2", file_unique_id="u2", duration=50)))
+
+    h.session.calls.clear()
+    now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
+    assert await publish_due(h.bot, sm, BASE, now, tmp_path) == ["2026-11-09_1900_pochemu"]
+    kinds = [type(c).__name__ for c in h.session.calls]
+    assert kinds == ["SendVoice", "SendMessage"]
+    assert h.session.calls[0].voice == "VOICE2" and h.session.calls[0].chat_id == "@onaotkrytaya"
+
+
+async def test_voice_from_non_admin_is_ignored(sm):
+    from aiogram.types import Voice
+    from bot.models import PostMedia
+    h = Harness(BASE, sm)
+    await h.click("media:2026-11-09_1900_pochemu", uid=BUYER)
+    calls = await h.feed(message=h._msg(BUYER, voice=Voice(file_id="X", file_unique_id="x", duration=5)))
+    assert calls == []
+    async with sm() as s:
+        assert list(await s.scalars(select(PostMedia))) == []
+
+
+async def test_unmedia_removes_voice(sm, tmp_path):
+    from aiogram.types import Voice
+    _post(tmp_path, "2026-11-09_1900_pochemu.md", "История")
+    h = Harness(BASE, sm)
+    await h.click("media:2026-11-09_1900_pochemu", uid=ADMIN)
+    await h.feed(message=h._msg(ADMIN, voice=Voice(file_id="V", file_unique_id="v", duration=5)))
+    calls = await h.click("unmedia:2026-11-09_1900_pochemu", uid=ADMIN)
+    assert any("Убрала" in t for t in texts_of(calls))
+    h.session.calls.clear()
+    now = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc)
+    await publish_due(h.bot, sm, BASE, now, tmp_path)
+    assert [type(c).__name__ for c in h.session.calls] == ["SendMessage"]
