@@ -40,7 +40,7 @@ BASE = Config(
     debug_commands=True, stars_price=650, yookassa_provider_token="381764678:TEST:1",
     channel_id="@onaotkrytaya",
 )
-# Тестовый доступ и /next — только у админов, поэтому «покупательница» в тестах полного пути — тоже админ
+# Тестовый доступ и /next - только у админов, поэтому «покупательница» в тестах полного пути - тоже админ
 TESTER = replace(BASE, admin_ids=frozenset({ADMIN, BUYER}))
 
 
@@ -185,13 +185,13 @@ async def test_full_paid_flow_and_duplicate_payment(sm):
     async with sm() as s:
         assert await s.scalar(select(func.count()).select_from(Purchase)) == 1
 
-    # Повторное уведомление о том же платеже — вторую покупку не создаёт
+    # Повторное уведомление о том же платеже - вторую покупку не создаёт
     calls = await h.paid("ch-1")
     assert any("уже открыт" in t for t in texts_of(calls))
     async with sm() as s:
         assert await s.scalar(select(func.count()).select_from(Purchase)) == 1
 
-    # Уже оплатила — второй счёт Telegram не пропустит
+    # Уже оплатила - второй счёт Telegram не пропустит
     calls = await h.pre_checkout()
     assert [c.ok for c in calls if isinstance(c, AnswerPreCheckoutQuery)] == [False]
 
@@ -306,7 +306,7 @@ async def test_autopost_status(sm, tmp_path):
     _post(tmp_path, "2026-11-16_1900_hello.md", "<b>Знакомство</b>\nтекст")
     h = Harness(replace(BASE, autopost=True), sm)
     text = await autopost_status(h.bot, sm, h.config, datetime(2026, 11, 10, tzinfo=timezone.utc), tmp_path)
-    assert "включён" in text and "16.11 19:00 — Знакомство" in text and "В очереди:</b> 1" in text
+    assert "включён" in text and "16.11 19:00 - Знакомство" in text and "В очереди:</b> 1" in text
 
 
 async def test_post_with_poll(sm, tmp_path):
@@ -401,7 +401,7 @@ async def test_tracker_stars_payment(sm):
     async with sm() as s:
         rows = (await s.execute(select(Purchase.product, Purchase.amount))).all()
         assert rows == [("tracker", 320)]
-    # повторный счёт на трекер Telegram не пропустит, а на курс — пропустит
+    # повторный счёт на трекер Telegram не пропустит, а на курс - пропустит
     calls = await h.feed(pre_checkout_query=PreCheckoutQuery(
         id="pc2", from_user=h._user(BUYER), currency="XTR", total_amount=320,
         invoice_payload=TRACKER_PAYLOAD))
@@ -626,7 +626,7 @@ async def test_history_shows_payments_and_delivery_times(sm):
     calls = await h.text(f"/history {BUYER}", uid=ADMIN)
     text = texts_of(calls)[0]
     assert "course, 990 ₽, test, статус: paid" in text and "День 1:" in text and "День 2:" in text
-    assert await h.text(f"/history {BUYER}", uid=777) == []  # посторонний — тишина
+    assert await h.text(f"/history {BUYER}", uid=777) == []  # посторонний - тишина
 
 
 
@@ -683,7 +683,7 @@ async def test_forget_keeps_payments(sm):
     async with sm() as s:
         u = await s.scalar(select(User).where(User.tg_id == BUYER))
         assert u.source is None and u.first_name is None
-        assert 1 in await delivered_map(s, u)  # путь оплачен и ещё исполняется — прогресс нужен
+        assert 1 in await delivered_map(s, u)  # путь оплачен и ещё исполняется - прогресс нужен
         assert len(list(await s.scalars(select(Purchase)))) == 1
     assert await h.text(f"/forget {BUYER}", uid=777) == []
 

@@ -1,10 +1,10 @@
 """Автопостинг в канал по расписанию.
 
 Посты лежат в content/channel/ и называются `ГГГГ-ММ-ДД_ЧЧММ_название.md`, например
-`2026-11-10_1900_kto-ty-bez-roli.md`. Время — по DEFAULT_TIMEZONE (по умолчанию Москва).
-Текст — Telegram HTML. Служебные строки (в любом месте файла):
-- `@button Текст кнопки | https://ссылка` — кнопка под постом;
-- `@poll Вопрос опроса` и следом 2–10 строк `@option Вариант` — анонимный опрос,
+`2026-11-10_1900_kto-ty-bez-roli.md`. Время - по DEFAULT_TIMEZONE (по умолчанию Москва).
+Текст - Telegram HTML. Служебные строки (в любом месте файла):
+- `@button Текст кнопки | https://ссылка` - кнопка под постом;
+- `@poll Вопрос опроса` и следом 2-10 строк `@option Вариант` - анонимный опрос,
   который публикуется сразу после поста.
 
 Бот публикует пост, когда наступило его время, но не позже чем через 6 часов
@@ -109,7 +109,7 @@ async def publish_due(
             try:
                 m = media.get(post.slug)
                 if m is not None:
-                    # Сначала голос/кружок — он цепляет, затем текст с кнопкой для тех, кто не может слушать
+                    # Сначала голос/кружок - он цепляет, затем текст с кнопкой для тех, кто не может слушать
                     if m.kind == "video_note":
                         await bot.send_video_note(config.channel_id, m.file_id)
                     else:
@@ -148,7 +148,7 @@ async def autopost_status(bot: Bot, sessionmaker: async_sessionmaker, config: Co
                                          f"нет права публиковать (статус: {member.status})")
             )
         except Exception as e:
-            lines.append(f"<b>Права бота:</b> не удалось проверить — бот не добавлен в канал? ({e})")
+            lines.append(f"<b>Права бота:</b> не удалось проверить - бот не добавлен в канал? ({e})")
     async with sessionmaker() as session:
         posted = set(await session.scalars(select(ChannelPost.slug)))
         with_media = set(await session.scalars(select(PostMedia.slug)))
@@ -160,7 +160,7 @@ async def autopost_status(bot: Bot, sessionmaker: async_sessionmaker, config: Co
         first = p.text.splitlines()[0] if p.text else p.slug
         first = re.sub(r"<[^>]+>", "", first)
         mark = " 🎙" if p.slug in with_media else ""
-        lines.append(f"• {p.at.astimezone(tz):%d.%m %H:%M} — {first}{mark}")
+        lines.append(f"• {p.at.astimezone(tz):%d.%m %H:%M} - {first}{mark}")
     return "\n".join(lines)
 
 

@@ -19,8 +19,8 @@ def _bool(name: str, default: bool) -> bool:
 def _database_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip()
     if not url:
-        # Amvera и подобные хостинги дают постоянную папку /data — храним базу там,
-        # чтобы она не стиралась при обновлении бота. Локально — ./data/bot.db.
+        # Amvera и подобные хостинги дают постоянную папку /data - храним базу там,
+        # чтобы она не стиралась при обновлении бота. Локально - ./data/bot.db.
         if os.path.isdir(PERSISTENT_DIR) and os.access(PERSISTENT_DIR, os.W_OK):
             return f"sqlite+aiosqlite:///{PERSISTENT_DIR}/bot.db"
         return "sqlite+aiosqlite:///data/bot.db"
@@ -57,7 +57,7 @@ class Config:
         return user_id in self.admin_ids
 
     def test_access(self, user_id: int) -> bool:
-        """Тестовый доступ без денег — только администраторам и только в PAYMENT_MODE=test.
+        """Тестовый доступ без денег - только администраторам и только в PAYMENT_MODE=test.
         Остальные в тестовом режиме видят «оплата скоро откроется»."""
         return self.payment_mode == "test" and self.is_admin(user_id)
 
@@ -77,15 +77,15 @@ def load_config() -> Config:
         raise SystemExit("Для PAYMENT_MODE=yookassa нужен YOOKASSA_PROVIDER_TOKEN (выдаёт @BotFather → Payments)")
     stars_price = int(os.getenv("STARS_PRICE", "0") or 0)
     if payment_mode == "stars" and stars_price <= 0:
-        raise SystemExit("Для PAYMENT_MODE=stars задай STARS_PRICE — цену в звёздах")
+        raise SystemExit("Для PAYMENT_MODE=stars задай STARS_PRICE - цену в звёздах")
     tracker_stars_price = int(os.getenv("TRACKER_STARS_PRICE", "0") or 0)
     if payment_mode == "stars" and tracker_stars_price <= 0:
-        raise SystemExit("Для PAYMENT_MODE=stars задай TRACKER_STARS_PRICE — цену трекера в звёздах")
+        raise SystemExit("Для PAYMENT_MODE=stars задай TRACKER_STARS_PRICE - цену трекера в звёздах")
     if payment_mode in {"yookassa", "stars"}:
         missing = [n for n in ("OFFER_URL", "PRIVACY_URL", "CONSENT_URL") if not os.getenv(n, "").strip()]
         if missing:
             raise SystemExit(
-                "Для приёма оплаты покупатель должен видеть документы до оплаты (ст. 8–10 ЗоЗПП). "
+                "Для приёма оплаты покупатель должен видеть документы до оплаты (ст. 8-10 ЗоЗПП). "
                 "Задай переменные: " + ", ".join(missing)
             )
     autopost = _bool("AUTOPOST", False)

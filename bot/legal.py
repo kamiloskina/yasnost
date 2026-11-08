@@ -1,7 +1,7 @@
 """Согласия, акцепт оферты и возвраты.
 
-Модель продукта: День 1 — бесплатный; дни 2–7 — шесть платных этапов за 990 ₽,
-стоимость одного этапа — 990 / 6 = 165 ₽ (закреплена в оферте, п. 4).
+Модель продукта: День 1 - бесплатный; дни 2-7 - шесть платных этапов за 990 ₽,
+стоимость одного этапа - 990 / 6 = 165 ₽ (закреплена в оферте, п. 4).
 """
 
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.models import Delivery, LegalAction, Purchase, RefundRequest, User
 
-# Редакция документов (оферта, политика, согласие). Меняй при изменении текстов документов —
+# Редакция документов (оферта, политика, согласие). Меняй при изменении текстов документов -
 # тогда пользователи заново подтвердят новую редакцию; ранее заключённые договоры не меняются.
 DOC_VERSION = "2026-11-08"
 
@@ -38,7 +38,7 @@ async def _last(session: AsyncSession, user: User, actions: tuple[str, ...]) -> 
 
 
 async def has_pd_consent(session: AsyncSession, user: User) -> bool:
-    """Действующее согласие: последнее из (согласие, отзыв) — согласие."""
+    """Действующее согласие: последнее из (согласие, отзыв) - согласие."""
     last = await _last(session, user, (PD_CONSENT, PD_WITHDRAW))
     return last is not None and last.action == PD_CONSENT
 

@@ -2,7 +2,7 @@
 
 Поток: кнопка «Продолжить путь» → счёт (send_invoice) → Telegram спрашивает бота
 pre_checkout_query (можно ли продавать) → покупатель платит → приходит successful_payment →
-запись покупки (идемпотентно по telegram_payment_charge_id) → открытие дней 2–7.
+запись покупки (идемпотентно по telegram_payment_charge_id) → открытие дней 2-7.
 """
 
 import json

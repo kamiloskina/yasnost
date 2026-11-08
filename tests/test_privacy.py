@@ -33,8 +33,8 @@ async def test_analytics_consent_only_asked_with_source_and_is_optional(sm):
     calls = await h.text("/start")
     assert not any("Можно я запомню" in t for t in texts_of(calls))
     calls = await h.text("/start reels_02")
-    assert any("Можно я запомню" in t for t in texts_of(calls))  # пришла по метке — спрашиваем
-    calls = await h.click("day1")  # без согласия — День 1 доступен
+    assert any("Можно я запомню" in t for t in texts_of(calls))  # пришла по метке - спрашиваем
+    calls = await h.click("day1")  # без согласия - День 1 доступен
     assert any("День 1." in t for t in texts_of(calls))
     assert (await _user(sm)).source is None
 
@@ -108,7 +108,7 @@ async def test_purge_expired(sm):
         old_free.last_activity_at = now - timedelta(days=400)
         fresh_free = await get_or_create_user(s, 1002, None, None, "Europe/Moscow")
         fresh_free.last_activity_at = now - timedelta(days=10)
-        fresh_free.source = "reels_01"  # метка без согласия — должна быть удалена
+        fresh_free.source = "reels_01"  # метка без согласия - должна быть удалена
         fresh_free.username, fresh_free.first_name = "legacy", "Аня"  # сохранено старой версией
         old_paid = await get_or_create_user(s, 1003, None, None, "Europe/Moscow")
         recent_paid = await get_or_create_user(s, 1004, None, None, "Europe/Moscow")

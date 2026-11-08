@@ -40,7 +40,7 @@ async def test_day1_is_free_and_needs_no_consent(sm):
     acts = await actions(sm)
     assert acts == [("free_accept", legal.DOC_VERSION, None)]  # согласие не навязывается
     async with sm() as s:
-        assert list(await s.scalars(select(Purchase))) == []  # День 1 — без оплаты
+        assert list(await s.scalars(select(Purchase))) == []  # День 1 - без оплаты
 
 
 # ---------- акцепт перед оплатой ----------
@@ -94,10 +94,10 @@ async def test_only_actually_sent_paid_stages_count(sm):
         u = await get_or_create_user(s, 5, None, None, "Europe/Moscow")
         await s.commit()
         old = datetime.now(timezone.utc) - timedelta(days=30)  # прошло много календарных дней
-        s.add(Delivery(user_id=u.id, day=1, delivered_at=old))  # бесплатный — не считается
+        s.add(Delivery(user_id=u.id, day=1, delivered_at=old))  # бесплатный - не считается
         s.add(Delivery(user_id=u.id, day=2, delivered_at=old))
         await s.commit()
-        assert await legal.stages_provided(s, u) == 1  # время не важно — важны отправленные этапы
+        assert await legal.stages_provided(s, u) == 1  # время не важно - важны отправленные этапы
 
 
 # ---------- процедура возврата ----------
@@ -140,7 +140,7 @@ async def test_refund_done_custom_amount(sm):
     await h.text(f"/refund {BUYER}", uid=ADMIN)
     async with sm() as s:
         req_id = (await s.scalar(select(RefundRequest))).id
-    await h.text(f"/refund_done {req_id} 990", uid=ADMIN)  # этап к человеку не дошёл — вернули всё
+    await h.text(f"/refund_done {req_id} 990", uid=ADMIN)  # этап к человеку не дошёл - вернули всё
     async with sm() as s:
         assert (await s.get(RefundRequest, req_id)).final_amount == 99000
 
@@ -184,7 +184,7 @@ def test_bot_texts_match_offer():
     t = texts.terms(BASE)
     assert "бесплатный" in t and "990 ₽" in t and "165 ₽" in t and "/return" in t
     b = texts.before_invoice(BASE)
-    o = texts.offer_confirm(BASE, "Дни 2–7 пути", "990 ₽")
+    o = texts.offer_confirm(BASE, "Дни 2-7 пути", "990 ₽")
     for x in (t, b, o):
         assert "3 дней" not in x and "3 дня" not in x and "141" not in x
     assert "165 ₽" in b and "165 ₽" in o
@@ -227,7 +227,7 @@ async def test_stage_without_audio_is_not_counted_and_becomes_complete_after_aud
     await h.click("aud_send:2", uid=ADMIN)
     async with sm() as s:
         u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        assert await legal.stages_provided(s, u) == 1  # дослали аудио — этап полный
+        assert await legal.stages_provided(s, u) == 1  # дослали аудио - этап полный
 
 
 async def test_analytics_consent_decline_records_nothing(sm):

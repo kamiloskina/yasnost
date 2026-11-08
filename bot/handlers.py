@@ -47,7 +47,7 @@ async def cmd_start(
     async with sessionmaker() as session:
         user = await _user(session, message.from_user, config)
         if source:
-            # Обезличенный счётчик переходов — без связи с пользователем
+            # Обезличенный счётчик переходов - без связи с пользователем
             await count_source(session, source)
             ask_analytics = user.source is None and not await legal.has_analytics_consent(session, user)
             await session.commit()
@@ -190,7 +190,7 @@ async def _ask_offer_accept(bot: Bot, chat_id: int, config: Config, product: str
     if product == TRACKER:
         label, price = texts.TRACKER_NAME, texts.tracker_price_label(config)
     else:
-        label, price = "Дни 2–7 пути «7 дней. Путь к Ясности»", texts.price_label(config)
+        label, price = "Дни 2-7 пути «7 дней. Путь к Ясности»", texts.price_label(config)
     await bot.send_message(
         chat_id, texts.offer_confirm(config, label, price),
         reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_ACCEPT_OFFER, callback_data=f"accept:{product}")]]),
@@ -369,10 +369,10 @@ async def cmd_next(
         paid = await has_paid(session, user)
         nxt = (max(delivered) + 1) if delivered else 1
         if nxt > TOTAL_DAYS:
-            await message.answer("Все 7 дней уже открыты. /reset — начать заново.")
+            await message.answer("Все 7 дней уже открыты. /reset - начать заново.")
             return
         if nxt > 1 and not paid:
-            await message.answer("Дни 2–7 доступны после (тестовой) оплаты.")
+            await message.answer("Дни 2-7 доступны после (тестовой) оплаты.")
             return
         await deliver_day(bot, session, user, nxt, config)
 
@@ -398,7 +398,7 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
     from bot.models import SourceCounter
     async with sessionmaker() as session:
         s = await stats(session)
-        sources = [x for x in await stats_by_source(session) if x[0] != "—"]
+        sources = [x for x in await stats_by_source(session) if x[0] != "-"]
         counters = list(await session.scalars(select(SourceCounter).order_by(SourceCounter.starts.desc())))
     clicks = "\n".join(f"  {c.source}: {c.starts}" for c in counters)
     src_lines = "\n".join(f"  {src}: пришли {n} → День 1: {d} → оплатили {p}" for src, n, d, p in sources)
@@ -432,7 +432,7 @@ async def cmd_autopost(
 async def cmd_history(
     message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
-    """Админ: /history <telegram_id> — оплаты и время выдачи каждого дня (доказательство при спорах)."""
+    """Админ: /history <telegram_id> - оплаты и время выдачи каждого дня (доказательство при спорах)."""
     if not config.is_admin(message.from_user.id):
         return
     from sqlalchemy import select
@@ -458,16 +458,16 @@ async def cmd_history(
     lines = [f"<b>{name}</b>", f"Пришла: {as_utc(user.created_at).astimezone(tz):%d.%m.%Y %H:%M}"]
     lines.append("\n<b>Оплаты</b>")
     if not purchases:
-        lines.append("— нет")
+        lines.append("- нет")
     for p in purchases:
         amount = f"{p.amount / 100:.0f} ₽" if p.currency == "RUB" else f"{p.amount} {p.currency}"
-        lines.append(f"— {as_utc(p.created_at).astimezone(tz):%d.%m.%Y %H:%M}: {p.product}, {amount}, "
+        lines.append(f"- {as_utc(p.created_at).astimezone(tz):%d.%m.%Y %H:%M}: {p.product}, {amount}, "
                      f"{p.provider}, статус: {p.status}")
     lines.append("\n<b>Выданные дни</b> (время отправки в чат)")
     if not delivered:
-        lines.append("— нет")
+        lines.append("- нет")
     for d in sorted(delivered):
-        lines.append(f"— День {d}: {delivered[d].astimezone(tz):%d.%m.%Y %H:%M}")
+        lines.append(f"- День {d}: {delivered[d].astimezone(tz):%d.%m.%Y %H:%M}")
     await message.answer("\n".join(lines))
 
 
@@ -475,7 +475,7 @@ async def cmd_history(
 async def cmd_forget(
     message: Message, command: CommandObject, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
-    """Админ: /forget <telegram_id> — требование удалить данные, полученное вне бота (например, по почте).
+    """Админ: /forget <telegram_id> - требование удалить данные, полученное вне бота (например, по почте).
     Та же процедура, что «Удалить мои данные» в /privacy: регистрация обращения и удаление всего,
     для чего нет иного основания (ст. 20, 21 152-ФЗ)."""
     if not config.is_admin(message.from_user.id):

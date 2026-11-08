@@ -28,7 +28,7 @@ def _table_to_list(rows: list[str]) -> list[str]:
     out = []
     for c in body:
         first, rest = c[0], [f"{h.lower()}: {v}" for h, v in zip(header[1:], c[1:]) if v]
-        out.append(f"— {first}" + (f" ({'; '.join(rest)})" if rest else ""))
+        out.append(f"- {first}" + (f" ({'; '.join(rest)})" if rest else ""))
     return out
 
 
@@ -52,11 +52,11 @@ def convert(md: str) -> str:
             out.extend(_table_to_list(table))
             continue
         stripped = re.sub(r"^\d+(\.\d+)*\.\s*", "", line.strip())
-        if stripped.startswith(MARK):  # целый пункт — служебный
+        if stripped.startswith(MARK):  # целый пункт - служебный
             i += 1
             continue
         if MARK in line:  # пометка в конце строки
-            line = line.split(MARK)[0].rstrip(" —:;")
+            line = line.split(MARK)[0].rstrip(" -:;")
         line = re.sub(r"^#{1,6}\s*", "", line)
         out.append(_strip_md(line))
         i += 1

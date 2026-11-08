@@ -37,7 +37,7 @@ async def send_lesson(bot: Bot, chat_id: int, day: int) -> bool:
             if audio is not None:
                 await bot.send_audio(chat_id, FSInputFile(audio), caption=caption)
             else:
-                # Записи ещё нет: сценарий практики не отправляем — только короткое сообщение
+                # Записи ещё нет: сценарий практики не отправляем - только короткое сообщение
                 await bot.send_message(chat_id, texts.audio_pending(title))
                 complete = False
             continue
@@ -121,7 +121,7 @@ _last_purge: datetime | None = None
 
 
 def _purge_due() -> bool:
-    """Очистка по срокам хранения — раз в сутки (и при запуске)."""
+    """Очистка по срокам хранения - раз в сутки (и при запуске)."""
     global _last_purge
     now = datetime.now(timezone.utc)
     if _last_purge is None or now - _last_purge >= timedelta(days=1):

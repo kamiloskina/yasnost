@@ -1,6 +1,6 @@
 """Права субъекта персональных данных и сроки хранения (152-ФЗ, ст. 14, 20, 21).
 
-Что делает код — то же, что обещает docs/legal/privacy.md (разделы 8–9):
+Что делает код - то же, что обещает docs/legal/privacy.md (разделы 8-9):
 - /privacy: сведения о данных (ст. 14), отзыв согласия на учёт источника (ст. 9 ч. 2),
   требование удалить данные (ст. 20 ч. 3, ст. 21). Каждое обращение получает номер и результат.
 - purge_expired(): ежедневное удаление по истечении сроков хранения (ст. 5 ч. 7, ст. 21 ч. 4).
@@ -66,7 +66,7 @@ async def destroy(session: AsyncSession, user: User) -> str:
     last = await _last_payment_event(session, user)
     if last is None:
         await delete_user_fully(session, user)
-        return "Все твои данные удалены. Если вернёшься — начнёшь с чистого листа."
+        return "Все твои данные удалены. Если вернёшься - начнёшь с чистого листа."
     user.source = None
     user.wants_purchase = False
     await session.execute(delete(LegalAction).where(
@@ -75,11 +75,11 @@ async def destroy(session: AsyncSession, user: User) -> str:
     ))
     until = paid_retention_until(last).strftime("%d.%m.%Y")
     if await _active_course(session, user):
-        keep = ("прогресс оплаченного пути — он ещё исполняется (договор); после его завершения "
+        keep = ("прогресс оплаченного пути - он ещё исполняется (договор); после его завершения "
                 f"прогресс, сведения об оплатах и принятии условий хранятся до {until}")
     else:
         keep = (f"сведения об оплатах, возвратах, принятии условий и о том, какие этапы и когда "
-                f"направлены, — до {until}: это нужно для налоговых целей и разрешения возможных споров")
+                f"направлены, - до {until}: это нужно для налоговых целей и разрешения возможных споров")
     return f"Удалили метку источника и согласие на её учёт. Сохраняем: {keep}. Потом удалим автоматически."
 
 
@@ -119,7 +119,7 @@ async def purge_expired(session: AsyncSession, now: datetime | None = None) -> d
             stats["sources"] += 1
         if user.wants_purchase and as_utc(user.last_activity_at or user.created_at) < now - timedelta(days=365):
             user.wants_purchase = False
-    # Имя и username больше не собираются — очищаем сохранённые ранее (минимизация)
+    # Имя и username больше не собираются - очищаем сохранённые ранее (минимизация)
     await session.execute(update(User).where(or_(User.username.is_not(None), User.first_name.is_not(None)))
                           .values(username=None, first_name=None))
     old = now - timedelta(days=365 * REQUEST_YEARS)

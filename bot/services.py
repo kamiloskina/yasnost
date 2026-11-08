@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.models import Delivery, Purchase, User
 
 TOTAL_DAYS = 7
-FREE_DAYS = 1  # День 1 бесплатно, дни 2–7 после оплаты
+FREE_DAYS = 1  # День 1 бесплатно, дни 2-7 после оплаты
 
 
 def as_utc(dt: datetime) -> datetime:
@@ -83,7 +83,7 @@ async def paid_purchases(session: AsyncSession, user: User, product: str = COURS
 
 
 async def refund_user(session: AsyncSession, user: User, product: str = COURSE) -> list[Purchase]:
-    """Помечает оплаты продукта как возвращённые (для курса — выдача дней 2–7 прекращается)."""
+    """Помечает оплаты продукта как возвращённые (для курса - выдача дней 2-7 прекращается)."""
     purchases = await paid_purchases(session, user, product)
     for p in purchases:
         p.status = "refunded"
@@ -107,7 +107,7 @@ def due_time_for_next_day(prev_delivered_at: datetime, tz_name: str, hour: int) 
 def next_due_day(
     delivered: dict[int, datetime], paid: bool, now: datetime, tz_name: str, hour: int
 ) -> int | None:
-    """Какой день пора отправить сейчас. None — ничего не нужно.
+    """Какой день пора отправить сейчас. None - ничего не нужно.
 
     День 1 выдаётся только по кнопке, а не по расписанию.
     """
@@ -175,7 +175,7 @@ async def stats_by_source(session: AsyncSession) -> list[tuple[str, int, int, in
         Purchase.status == "paid", Purchase.product == COURSE, Purchase.provider != "gift"
     )
     day1_users = select(Delivery.user_id).where(Delivery.day == 1)
-    src = func.coalesce(User.source, "—")
+    src = func.coalesce(User.source, "-")
     rows = await session.execute(
         select(
             src,

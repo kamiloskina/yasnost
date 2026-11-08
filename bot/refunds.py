@@ -59,7 +59,7 @@ async def _register_and_notify(bot: Bot, session: AsyncSession, user: User, purc
     due = legal.fmt_amount(req.amount_due, req.currency)
     if not created:
         return req
-    # Звёзды Telegram возвращает только целиком: автоматически — только если платных этапов не было
+    # Звёзды Telegram возвращает только целиком: автоматически - только если платных этапов не было
     if purchase.provider == "stars" and req.stages_provided == 0:
         try:
             await bot.refund_star_payment(user.tg_id, purchase.provider_payment_id)
@@ -75,15 +75,15 @@ async def _register_and_notify(bot: Bot, session: AsyncSession, user: User, purc
     paid = legal.fmt_amount(purchase.amount, purchase.currency)
     how = {
         "yookassa": "Верни сумму в личном кабинете ЮKassa, затем скорректируй чек в «Мой налог».",
-        "stars": "⚠️ Частичный возврат звёзд в Telegram невозможен — реши вопрос с юристом (LEGAL_REVIEW).",
-    }.get(purchase.provider, "Тестовая покупка — деньги не списывались.")
+        "stars": "⚠️ Частичный возврат звёзд в Telegram невозможен - реши вопрос с юристом (LEGAL_REVIEW).",
+    }.get(purchase.provider, "Тестовая покупка - деньги не списывались.")
     await _notify_admins(
         bot, config,
         f"🧾 Заявление на возврат №{req.id}\nОт: {who}\n"
         f"Оплачено: {paid}, способ: {purchase.provider}\n"
         f"Направлено платных этапов: {req.stages_provided} из 6\nК возврату по оферте: {due}\n\n"
         f"{how}\nПосле возврата: /refund_done {req.id}  (или /refund_done {req.id} <сумма ₽>, "
-        "если возвращаешь другую сумму — например, человек сообщил, что этап к нему не пришёл).",
+        "если возвращаешь другую сумму - например, человек сообщил, что этап к нему не пришёл).",
     )
     return req
 
@@ -132,8 +132,8 @@ async def cb_return_confirm(call: CallbackQuery, bot: Bot, sessionmaker: async_s
 @router.message(Command("refund"))
 async def cmd_refund(message: Message, command: CommandObject, bot: Bot,
                      sessionmaker: async_sessionmaker, config: Config) -> None:
-    """Админ: /refund <telegram_id> [tracker] — зарегистрировать отказ от имени пользователя
-    (например, если он написал на почту). Расчёт — тот же, что в /return."""
+    """Админ: /refund <telegram_id> [tracker] - зарегистрировать отказ от имени пользователя
+    (например, если он написал на почту). Расчёт - тот же, что в /return."""
     if not config.is_admin(message.from_user.id):
         return
     parts = (command.args or "").split()
@@ -141,7 +141,7 @@ async def cmd_refund(message: Message, command: CommandObject, bot: Bot,
         tg_id = int(parts[0])
         product = TRACKER if len(parts) > 1 and parts[1].lower() == TRACKER else COURSE
     except (ValueError, IndexError):
-        await message.answer("Формат: /refund 123456789 — путь, /refund 123456789 tracker — трекер")
+        await message.answer("Формат: /refund 123456789 - путь, /refund 123456789 tracker - трекер")
         return
     async with sessionmaker() as session:
         user = await session.scalar(select(User).where(User.tg_id == tg_id))
@@ -157,12 +157,12 @@ async def cmd_refund(message: Message, command: CommandObject, bot: Bot,
             await message.answer("Оплаченных покупок у пользователя нет.")
             return
         if product == TRACKER:
-            # Трекер — файл: сумма возврата определяется по обстоятельствам (не дошёл, дефект и т.п.)
+            # Трекер - файл: сумма возврата определяется по обстоятельствам (не дошёл, дефект и т.п.)
             req, _ = await legal.register_refund(session, user, purchase)
             req.amount_due = purchase.amount
             await session.commit()
             await message.answer(
-                f"Заявление №{req.id} по трекеру зарегистрировано. Если возвращаешь — проведи возврат и "
+                f"Заявление №{req.id} по трекеру зарегистрировано. Если возвращаешь - проведи возврат и "
                 f"напиши /refund_done {req.id} (полная сумма {legal.fmt_amount(purchase.amount, purchase.currency)}) "
                 f"или /refund_done {req.id} <сумма ₽>."
             )
@@ -179,7 +179,7 @@ async def cmd_refund(message: Message, command: CommandObject, bot: Bot,
 @router.message(Command("refund_done"))
 async def cmd_refund_done(message: Message, command: CommandObject, bot: Bot,
                           sessionmaker: async_sessionmaker, config: Config) -> None:
-    """Админ: /refund_done <№ заявления> [сумма ₽] — зафиксировать выполненный возврат."""
+    """Админ: /refund_done <№ заявления> [сумма ₽] - зафиксировать выполненный возврат."""
     if not config.is_admin(message.from_user.id):
         return
     parts = (command.args or "").split()

@@ -38,9 +38,9 @@ def test_unpaid_user_does_not_get_day2():
 
 def test_day2_waits_until_next_morning_moscow():
     delivered = {1: utc(2026, 1, 1, 10)}  # 13:00 МСК 1 января
-    # 2 января 08:59 МСК = 05:59 UTC — ещё рано
+    # 2 января 08:59 МСК = 05:59 UTC - ещё рано
     assert next_due_day(delivered, True, utc(2026, 1, 2, 5, 59), MSK, 9) is None
-    # 2 января 09:00 МСК = 06:00 UTC — пора
+    # 2 января 09:00 МСК = 06:00 UTC - пора
     assert next_due_day(delivered, True, utc(2026, 1, 2, 6, 0), MSK, 9) == 2
 
 
@@ -170,7 +170,7 @@ async def test_blocked_bot_marks_user_and_does_not_record_delivery(sm):
         u = await s.scalar(select(User).where(User.tg_id == 111))
         assert u.is_blocked is True
         assert await delivered_map(s, u) == {}
-    # Написала боту снова — снова считается активной
+    # Написала боту снова - снова считается активной
     async with sm() as s:
         u = await get_or_create_user(s, 111, "u", "Аня", MSK)
         assert u.is_blocked is False
