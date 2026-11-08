@@ -554,7 +554,7 @@ async def test_admin_uploads_lesson_audio_and_users_get_it(sm):
     calls = await h.click("day1")  # обычная участница получает День 1
     audios = [c for c in calls if isinstance(c, SendAudio)]
     assert len(audios) == 1 and audios[0].audio == "AUD1"
-    assert "Кто я, когда никто не смотрит" in audios[0].caption and "наушниках" in audios[0].caption
+    assert "Кто ты, когда никто не видит" in audios[0].caption and "наушниках" in audios[0].caption
     # сценарий практики текстом больше не приходит
     assert not any("Сядь удобно. Поставь стопы" in t for t in texts_of(calls))
 
@@ -709,7 +709,7 @@ async def test_practice_script_not_sent_without_audio(sm):
     calls = await h.click("day1")
     t = texts_of(calls)
     assert not any("Сядь удобно. Поставь стопы" in x for x in t)
-    assert any("Аудиопрактика «Кто я, когда никто не смотрит»" in x and "скоро появится" in x for x in t)
+    assert any("Аудиопрактика «Кто ты, когда никто не видит»" in x and "скоро появится" in x for x in t)
     assert any("<b>Вопросы</b>" in x for x in t)  # остальной день на месте
 
 
