@@ -72,6 +72,20 @@ ADS = {
                 ],
                 "trust": ["Договор и закрывающие документы", "Фиксированная смета", "Отчёт по каждому этапу", "Работаем по всей России"],
             },
+            {
+                "type": "portfolio",
+                "title": "Наши работы",
+                "project": "Сайт клининговой компании",
+                "place": "Московская область",
+                "desk": "cleaning-desktop.png",
+                "mob": "cleaning-mobile.png",
+                "features": [
+                    "Оффер и кнопка расчёта на первом экране",
+                    "Прайс по услугам с ценой за м²",
+                    "Блок ответов на частые вопросы",
+                    "Отзывы с Яндекс Карт и 2ГИС",
+                ],
+            },
         ],
     },
     # ------------------------------------------------------------------ SMM
@@ -181,6 +195,20 @@ ADS = {
                     ("Запуск", "Домен, хостинг, обучение"),
                 ],
                 "trust": ["Договор и поэтапная оплата", "Сайт и доступы - ваши", "Правки на каждом этапе", "Поддержка после запуска"],
+            },
+            {
+                "type": "portfolio",
+                "title": "Наши работы",
+                "project": "Сайт клининговой компании",
+                "place": "Московская область",
+                "desk": "cleaning-desktop.png",
+                "mob": "cleaning-mobile.png",
+                "features": [
+                    "Оффер и кнопка расчёта на первом экране",
+                    "Прайс по услугам с ценой за м²",
+                    "Блок ответов на частые вопросы",
+                    "Отзывы с Яндекс Карт и 2ГИС",
+                ],
             },
         ],
     },
@@ -330,7 +358,24 @@ def slide_flow(s, acc, idx, total):
 </div>"""
 
 
+def slide_portfolio(s, acc, idx, total):
+    feats = "".join(f'<li>{e(x)}</li>' for x in s["features"])
+    return f"""
+<div class="slide light" style="--a:{acc}">
+  {head(s['title'], acc, idx, total)}
+  <div class="pf">
+    <div class="browser"><div class="bar"><i></i><i></i><i></i></div><img src="../assets/{s['desk']}"></div>
+    <div class="phone"><img src="../assets/{s['mob']}"></div>
+  </div>
+  <div class="pf-info">
+    <div class="pf-name"><b>{e(s['project'])}</b><span>{e(s['place'])}</span></div>
+    <ul>{feats}</ul>
+  </div>
+</div>"""
+
+
 RENDER = {
+    "portfolio": slide_portfolio,
     "cover": slide_cover,
     "grid": slide_grid,
     "packages": slide_packages,

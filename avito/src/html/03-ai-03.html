@@ -87,6 +87,22 @@ h2 { position: relative; margin-top: 34px; font-size: 84px; font-weight: 800; le
 .link { align-self: center; font-size: 48px; color: #B0ABA2; font-weight: 700; }
 .nw { white-space: nowrap; }
 .card h3 .nw { white-space: normal; }
+
+/* portfolio */
+.pf { position: relative; margin-top: 40px; height: 600px; }
+.browser { position: absolute; left: 0; top: 0; width: 1000px; border-radius: 22px; overflow: hidden; background: #fff; border: 1px solid #E0DAD0; box-shadow: 0 30px 60px -30px rgba(20,22,28,.35); }
+.browser .bar { height: 42px; background: #ECE8E1; display: flex; align-items: center; gap: 10px; padding-left: 20px; }
+.browser .bar i { width: 13px; height: 13px; border-radius: 50%; background: #CFC8BC; }
+.browser img { display: block; width: 100%; height: 558px; object-fit: cover; object-position: top; }
+.phone { position: absolute; right: 10px; top: -10px; width: 374px; height: 620px; border-radius: 46px; background: #15171C; padding: 12px; box-shadow: 0 30px 60px -25px rgba(20,22,28,.5); }
+.phone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 36px; }
+.pf-info { margin-top: auto; display: flex; gap: 48px; align-items: center; }
+.pf-name { flex: 0 0 380px; }
+.pf-name b { display: block; font-family: "Inter Display", "Inter", sans-serif; font-size: 42px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; }
+.pf-name span { display: block; margin-top: 12px; font-size: 26px; color: #6A6B70; }
+.pf-info ul { list-style: none; flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; }
+.pf-info li { font-size: 26px; line-height: 1.3; padding-left: 32px; position: relative; }
+.pf-info li::before { content: ""; position: absolute; left: 2px; top: 10px; width: 14px; height: 14px; border-radius: 50%; background: var(--a); }
 </style></head><body>
 <div class="slide light" style="--a:#8A6BF0">
   <div class="top"><span class="kicker"><i></i>Пакеты внедрения</span><span class="pg">03 / 04</span></div>
