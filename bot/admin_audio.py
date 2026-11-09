@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 
 # {telegram_id админа: день}, для которого ждём файл
 pending: dict[int, int] = {}
-# Какие записи уже разосланы (день, file_id) — защита от повторного нажатия
+# Какие записи уже разосланы (день, file_id) - защита от повторного нажатия
 broadcasted: set[tuple[int, str]] = set()
 
 
@@ -38,6 +38,16 @@ async def _receivers(sessionmaker: async_sessionmaker, day: int) -> list[int]:
         return list(rows)
 
 
+async def _mark_complete(sessionmaker: async_sessionmaker, tg_id: int, day: int) -> None:
+    """Аудио дослано - этап у этого человека теперь полный."""
+    from sqlalchemy import update
+    async with sessionmaker() as session:
+        uid = await session.scalar(select(User.id).where(User.tg_id == tg_id))
+        await session.execute(update(Delivery).where(Delivery.user_id == uid, Delivery.day == day)
+                              .values(complete=True))
+        await session.commit()
+
+
 @router.message(Command("audio"))
 async def cmd_audio(message: Message, config: Config) -> None:
     if not config.is_admin(message.from_user.id):
@@ -46,7 +56,7 @@ async def cmd_audio(message: Message, config: Config) -> None:
     rows = [[Btn(text=f"{'🎧 ' if d in CACHE else ''}День {d}. {t[d]}", callback_data=f"aud:{d}")]
             for d in range(1, TOTAL_DAYS + 1)]
     await message.answer(
-        "Для какого дня загрузить аудиопрактику? 🎧 — уже загружена (можно заменить).",
+        "Для какого дня загрузить аудиопрактику? 🎧 - уже загружена (можно заменить).",
         reply_markup=Kb(inline_keyboard=rows),
     )
 
@@ -63,7 +73,7 @@ async def cb_audio_day(call: CallbackQuery, config: Config) -> None:
     await call.message.answer(
         f"День {day}. Отправь сюда аудиофайл (MP3 из GarageBand или любого приложения) "
         "или запиши голосовое. Оно заменит текст практики в уроке.\n\n"
-        "Передумала — /cancel.",
+        "Передумала - /cancel.",
         reply_markup=Kb(inline_keyboard=[[Btn(text=f"Убрать аудио у дня {day}",
                                               callback_data=f"unaud:{day}")]]),
     )
@@ -126,7 +136,7 @@ async def cb_audio_broadcast(call: CallbackQuery, sessionmaker: async_sessionmak
         return
     key = (day, item[1])
     if key in broadcasted:
-        await call.message.answer("Эту запись уже отправляли — повторно не шлю.")
+        await call.message.answer("Эту запись уже отправляли - повторно не шлю.")
         return
     broadcasted.add(key)
     sent = 0
@@ -136,6 +146,7 @@ async def cb_audio_broadcast(call: CallbackQuery, sessionmaker: async_sessionmak
         try:
             await send_cached(call.bot, tg_id, day, texts.audio_ready(day))
             sent += 1
+            await _mark_complete(sessionmaker, tg_id, day)
         except TelegramForbiddenError:
             continue
         except Exception:

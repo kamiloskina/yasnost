@@ -43,12 +43,12 @@ async def gift_tracker(bot: Bot, session: AsyncSession, user: User, config: Conf
 
 
 async def offer_tracker(bot: Bot, session: AsyncSession, user: User, config: Config) -> None:
-    """Показывает трекер: если уже есть — присылает файл, иначе — предложение купить."""
+    """Показывает трекер: если уже есть - присылает файл, иначе - предложение купить."""
     if await has_paid(session, user, TRACKER):
         await bot.send_message(user.tg_id, texts.TRACKER_ALREADY)
         await send_tracker(bot, user.tg_id)
         return
     text = texts.TRACKER_OFFER.format(price=texts.tracker_price_label(config))
-    if not await has_paid(session, user):  # курс не куплен — намекнём на подарок
+    if not await has_paid(session, user):  # курс не куплен - намекнём на подарок
         text += "\n\n" + texts.TRACKER_HINT_COURSE
     await bot.send_message(user.tg_id, text, reply_markup=keyboards.tracker_offer(config, user.tg_id))

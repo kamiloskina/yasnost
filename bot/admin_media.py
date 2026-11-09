@@ -39,10 +39,10 @@ async def cmd_voice(message: Message, sessionmaker: async_sessionmaker, config: 
     if not posts:
         await message.answer("В очереди нет постов.")
         return
-    rows = [[Btn(text=f"{_date(p.slug)} — {post_title(p)[:40]}{' 🎙' if p.slug in with_media else ''}",
+    rows = [[Btn(text=f"{_date(p.slug)} - {post_title(p)[:40]}{' 🎙' if p.slug in with_media else ''}",
                  callback_data=f"media:{p.slug}")] for p in posts]
     await message.answer(
-        "К какому посту прикрепить голосовое или кружок? 🎙 — уже прикреплено (можно заменить).",
+        "К какому посту прикрепить голосовое или кружок? 🎙 - уже прикреплено (можно заменить).",
         reply_markup=Kb(inline_keyboard=rows),
     )
 
@@ -57,9 +57,9 @@ async def cb_media(call: CallbackQuery, config: Config) -> None:
     admin_audio.pending.pop(call.from_user.id, None)
     pending[call.from_user.id] = slug
     await call.message.answer(
-        f"Пост {_date(slug)}. Запиши голосовое (или кружок) и отправь сюда — "
+        f"Пост {_date(slug)}. Запиши голосовое (или кружок) и отправь сюда - "
         "оно выйдет в канал вместе с постом, перед текстом.\n\n"
-        "Передумала — /cancel. Убрать уже прикреплённое — кнопка ниже.",
+        "Передумала - /cancel. Убрать уже прикреплённое - кнопка ниже.",
         reply_markup=Kb(inline_keyboard=[[Btn(text="Убрать голосовое у этого поста",
                                               callback_data=f"unmedia:{slug}")]]),
     )
@@ -107,5 +107,5 @@ async def on_media(message: Message, sessionmaker: async_sessionmaker, config: C
     await attach_media(sessionmaker, slug, kind, file_id)
     await message.answer(
         f"{what} прикреплено к посту {_date(slug)} ✓\n"
-        "Оно выйдет в канал вместе с постом. Проверить очередь — /autopost."
+        "Оно выйдет в канал вместе с постом. Проверить очередь - /autopost."
     )

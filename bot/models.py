@@ -26,6 +26,8 @@ class User(Base):
     # Откуда пришла: параметр ссылки t.me/Clarity7DaysBot?start=<source> (reels, channel, …)
     source: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Последнее действие пользователя в боте - для сроков хранения (политика, раздел 8)
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Purchase(Base):
@@ -33,7 +35,7 @@ class Purchase(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    # Продукт: course — дни 2–7 пути, tracker — трекер на 30 дней
+    # Продукт: course - дни 2-7 пути, tracker - трекер на 30 дней
     product: Mapped[str] = mapped_column(String(16), default="course", server_default="course")
     provider: Mapped[str] = mapped_column(String(32))  # test | yookassa | stars | gift
     # Уникальный ID платежа у провайдера: повторное уведомление не создаст вторую покупку.
@@ -52,6 +54,9 @@ class Delivery(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     day: Mapped[int] = mapped_column(Integer)
     delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Все материалы этапа направлены, включая запись аудиопрактики (оферта, п. 6.5).
+    # False - этап ушёл без аудио (записи ещё не было): при возврате не учитывается как оказанный.
+    complete: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
 
 class ChannelPost(Base):
@@ -88,9 +93,9 @@ class LessonAudio(Base):
 class LegalAction(Base):
     """Юридически значимые действия пользователя: доказательство волеизъявления.
 
-    action: pd_consent — согласие на обработку ПДн; pd_withdraw — отзыв согласия;
-    free_accept — начало бесплатной части (День 1); offer_accept — акцепт платной части
-    (переход к оплате). doc_version — редакция документов на момент действия.
+    action: pd_consent - согласие на обработку ПДн; pd_withdraw - отзыв согласия;
+    free_accept - начало бесплатной части (День 1); offer_accept - акцепт платной части
+    (переход к оплате). doc_version - редакция документов на момент действия.
     """
     __tablename__ = "legal_actions"
 
@@ -114,5 +119,28 @@ class RefundRequest(Base):
     final_amount: Mapped[int | None] = mapped_column(Integer)  # фактически возвращено
     currency: Mapped[str] = mapped_column(String(8))
     status: Mapped[str] = mapped_column(String(16), default="registered")  # registered | completed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SourceCounter(Base):
+    """Обезличенный счётчик переходов по меткам ссылок (без связи с пользователем)."""
+    __tablename__ = "source_counters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(64), unique=True)
+    starts: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PrivacyRequest(Base):
+    """Обращения субъекта ПДн (ст. 14, 20, 21 152-ФЗ): номер, тип, сроки и результат.
+    Хранится отдельно от пользователя, чтобы сохранить доказательство исполнения после удаления."""
+    __tablename__ = "privacy_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # access | destroy | analytics_withdraw
+    status: Mapped[str] = mapped_column(String(16), default="registered")  # registered | completed
+    result: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -43,7 +43,7 @@ async def remove_audio(sessionmaker: async_sessionmaker, day: int) -> bool:
 
 
 async def send_cached(bot: Bot, chat_id: int, day: int, caption: str | None) -> bool:
-    """Отправляет загруженную аудиопрактику дня. False — если её нет."""
+    """Отправляет загруженную аудиопрактику дня. False - если её нет."""
     item = CACHE.get(day)
     if item is None:
         return False

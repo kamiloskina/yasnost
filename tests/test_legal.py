@@ -11,7 +11,7 @@ from sqlalchemy import select
 from bot import legal
 from bot.models import Delivery, LegalAction, Purchase, RefundRequest, User
 from bot.services import delivered_map, has_paid
-from tests.test_flows import ADMIN, BASE, BUYER, TESTER, Harness, sm, texts_of  # noqa: F401
+from tests.test_flows import ADMIN, BASE, BUYER, TESTER, Harness, all_audio, sm, texts_of  # noqa: F401
 
 ROOT = Path(__file__).resolve().parent.parent
 YK = replace(TESTER, payment_mode="yookassa", offer_url="https://t/offer",
@@ -33,19 +33,14 @@ async def test_start_is_not_consent_or_acceptance(sm):
     assert await actions(sm) == []
 
 
-async def test_day1_requires_separate_consent_then_free(sm):
+async def test_day1_is_free_and_needs_no_consent(sm):
     h = Harness(BASE, sm, auto_legal=False)
-    calls = await h.click("day1")
-    msg = [c for c in calls if isinstance(c, SendMessage)][0]
-    assert "согласие" in msg.text and msg.reply_markup.inline_keyboard[0][0].callback_data == "consent"
-    assert await actions(sm) == []  # ничего не отмечено заранее
-    await h.click("consent")
     calls = await h.click("day1")
     assert any("День 1." in t for t in texts_of(calls))
     acts = await actions(sm)
-    assert ("pd_consent", legal.DOC_VERSION, None) in acts and ("free_accept", legal.DOC_VERSION, None) in acts
+    assert acts == [("free_accept", legal.DOC_VERSION, None)]  # согласие не навязывается
     async with sm() as s:
-        assert list(await s.scalars(select(Purchase))) == []  # День 1 — без оплаты
+        assert list(await s.scalars(select(Purchase))) == []  # День 1 - без оплаты
 
 
 # ---------- акцепт перед оплатой ----------
@@ -99,15 +94,15 @@ async def test_only_actually_sent_paid_stages_count(sm):
         u = await get_or_create_user(s, 5, None, None, "Europe/Moscow")
         await s.commit()
         old = datetime.now(timezone.utc) - timedelta(days=30)  # прошло много календарных дней
-        s.add(Delivery(user_id=u.id, day=1, delivered_at=old))  # бесплатный — не считается
+        s.add(Delivery(user_id=u.id, day=1, delivered_at=old))  # бесплатный - не считается
         s.add(Delivery(user_id=u.id, day=2, delivered_at=old))
         await s.commit()
-        assert await legal.stages_provided(s, u) == 1  # время не важно — важны отправленные этапы
+        assert await legal.stages_provided(s, u) == 1  # время не важно - важны отправленные этапы
 
 
 # ---------- процедура возврата ----------
 
-async def test_user_return_flow_is_registered_idempotent_and_completed(sm):
+async def test_user_return_flow_is_registered_idempotent_and_completed(sm, all_audio):
     h = Harness(TESTER, sm)
     await h.click("day1")
     await h.click("buy")
@@ -145,12 +140,12 @@ async def test_refund_done_custom_amount(sm):
     await h.text(f"/refund {BUYER}", uid=ADMIN)
     async with sm() as s:
         req_id = (await s.scalar(select(RefundRequest))).id
-    await h.text(f"/refund_done {req_id} 990", uid=ADMIN)  # этап к человеку не дошёл — вернули всё
+    await h.text(f"/refund_done {req_id} 990", uid=ADMIN)  # этап к человеку не дошёл - вернули всё
     async with sm() as s:
         assert (await s.get(RefundRequest, req_id)).final_amount == 99000
 
 
-async def test_stars_auto_refund_only_without_paid_stages(sm):
+async def test_stars_auto_refund_only_without_paid_stages(sm, all_audio):
     cfg = replace(TESTER, payment_mode="stars")
     h = Harness(cfg, sm)
     await h.click("day1")
@@ -169,33 +164,6 @@ async def test_return_nothing_without_payment(sm):
 
 # ---------- отзыв согласия ----------
 
-async def test_withdraw_consent_without_payment(sm):
-    h = Harness(BASE, sm)
-    await h.text("/start reels_01")
-    await h.click("day1")
-    calls = await h.text("/privacy")
-    assert any("действует" in t for t in texts_of(calls))
-    await h.click("withdraw")
-    async with sm() as s:
-        u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        assert u.first_name is None and u.source is None and await delivered_map(s, u) == {}
-        assert await legal.has_pd_consent(s, u) is False
-    h.auto_legal = False
-    calls = await h.click("day1")
-    assert any("согласие" in t for t in texts_of(calls))  # снова нужно согласие
-
-
-async def test_withdraw_keeps_progress_of_paid_course(sm):
-    h = Harness(TESTER, sm)
-    await h.click("day1")
-    await h.click("buy")
-    await h.click("withdraw")
-    async with sm() as s:
-        u = await s.scalar(select(User).where(User.tg_id == BUYER))
-        assert 1 in await delivered_map(s, u)  # основание — договор
-        assert len(list(await s.scalars(select(Purchase)))) == 1
-
-
 # ---------- согласованность документов и интерфейса ----------
 
 def test_documents_consistent_with_product():
@@ -207,7 +175,8 @@ def test_documents_consistent_with_product():
         assert "141" not in doc
     assert "990" in offer and "165" in offer and "День 1" in offer and "бесплатн" in offer
     assert "3 (трёх)" not in offer and "трёх календарных" not in offer  # нет срока «3 дня» на отказ
-    assert legal.DOC_VERSION == "2026-11-07" and "07.11.2026" in offer and "07.11.2026" in consent
+    assert legal.DOC_VERSION == "2026-11-08"
+    assert "08.11.2026" in privacy and "08.11.2026" in consent and "2026-11-08" in offer
 
 
 def test_bot_texts_match_offer():
@@ -215,10 +184,59 @@ def test_bot_texts_match_offer():
     t = texts.terms(BASE)
     assert "бесплатный" in t and "990 ₽" in t and "165 ₽" in t and "/return" in t
     b = texts.before_invoice(BASE)
-    o = texts.offer_confirm(BASE, "Дни 2–7 пути", "990 ₽")
+    o = texts.offer_confirm(BASE, "Дни 2-7 пути", "990 ₽")
     for x in (t, b, o):
         assert "3 дней" not in x and "3 дня" not in x and "141" not in x
     assert "165 ₽" in b and "165 ₽" in o
     import inspect
     src = inspect.getsource(texts)
     assert "в течение 3 дней" not in src and "14 дней" not in src
+
+
+def test_publish_versions_are_clean_and_current():
+    import subprocess, sys
+    subprocess.run([sys.executable, str(ROOT / "docs/legal/build_publish.py")], check=True, capture_output=True)
+    for name in ("offer", "privacy", "consent"):
+        src = (ROOT / f"docs/legal/{name}.md").read_text(encoding="utf-8")
+        pub = (ROOT / f"docs/legal/publish/{name}.txt").read_text(encoding="utf-8")
+        assert "LEGAL_REVIEW" not in pub and "**" not in pub and "`" not in pub and "|" not in pub
+        assert "732771557733" in pub
+        # публикационная версия соответствует исходнику (не забыли пересобрать)
+        from importlib import util
+        spec = util.spec_from_file_location("bp", ROOT / "docs/legal/build_publish.py")
+        bp = util.module_from_spec(spec); spec.loader.exec_module(bp)
+        assert bp.convert(src) == pub
+    offer = (ROOT / "docs/legal/publish/offer.txt").read_text(encoding="utf-8")
+    assert "990" in offer and "165" in offer and "текстовая версия" not in offer
+
+
+
+async def test_stage_without_audio_is_not_counted_and_becomes_complete_after_audio(sm):
+    from aiogram.types import Audio
+    h = Harness(TESTER, sm)
+    await h.click("day1")
+    await h.click("buy")
+    await h.text("/next")  # день 2 ушёл без записи аудиопрактики
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        assert await legal.stages_provided(s, u) == 0
+    calls = await h.text("/return")
+    assert any("0 из 6" in t and "990 ₽" in t for t in texts_of(calls))
+    await h.click("aud:2", uid=ADMIN)
+    await h.feed(message=h._msg(ADMIN, audio=Audio(file_id="A2", file_unique_id="a2", duration=600)))
+    await h.click("aud_send:2", uid=ADMIN)
+    async with sm() as s:
+        u = await s.scalar(select(User).where(User.tg_id == BUYER))
+        assert await legal.stages_provided(s, u) == 1  # дослали аудио - этап полный
+
+
+async def test_analytics_consent_decline_records_nothing(sm):
+    h = Harness(BASE, sm, auto_legal=False)
+    calls = await h.text("/start reels_01")
+    kb = [c for c in calls if isinstance(c, SendMessage)][-1].reply_markup
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert datas == ["consent:reels_01", "consent_no"]
+    await h.click("consent_no")
+    assert await actions(sm) == []
+    async with sm() as s:
+        assert (await s.scalar(select(User))).source is None

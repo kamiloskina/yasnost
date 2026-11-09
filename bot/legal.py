@@ -1,7 +1,7 @@
 """Согласия, акцепт оферты и возвраты.
 
-Модель продукта: День 1 — бесплатный; дни 2–7 — шесть платных этапов за 990 ₽,
-стоимость одного этапа — 990 / 6 = 165 ₽ (закреплена в оферте, п. 4).
+Модель продукта: День 1 - бесплатный; дни 2-7 - шесть платных этапов за 990 ₽,
+стоимость одного этапа - 990 / 6 = 165 ₽ (закреплена в оферте, п. 4).
 """
 
 from datetime import datetime, timezone
@@ -11,14 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.models import Delivery, LegalAction, Purchase, RefundRequest, User
 
-# Редакция документов (оферта, политика, согласие). Меняй при изменении текстов документов —
+# Редакция документов (оферта, политика, согласие). Меняй при изменении текстов документов -
 # тогда пользователи заново подтвердят новую редакцию; ранее заключённые договоры не меняются.
-DOC_VERSION = "2026-11-07"
+DOC_VERSION = "2026-11-08"
 
 PAID_STAGES = (2, 3, 4, 5, 6, 7)
 
-PD_CONSENT = "pd_consent"
+PD_CONSENT = "pd_consent"          # редакция 2026-11-07: включала и учёт источника
 PD_WITHDRAW = "pd_withdraw"
+ANALYTICS_CONSENT = "analytics_consent"    # с 2026-11-08: отдельное согласие только на учёт источника
+ANALYTICS_WITHDRAW = "analytics_withdraw"
 FREE_ACCEPT = "free_accept"
 OFFER_ACCEPT = "offer_accept"
 
@@ -36,9 +38,15 @@ async def _last(session: AsyncSession, user: User, actions: tuple[str, ...]) -> 
 
 
 async def has_pd_consent(session: AsyncSession, user: User) -> bool:
-    """Действующее согласие: последнее из (согласие, отзыв) — согласие."""
+    """Действующее согласие: последнее из (согласие, отзыв) - согласие."""
     last = await _last(session, user, (PD_CONSENT, PD_WITHDRAW))
     return last is not None and last.action == PD_CONSENT
+
+
+async def has_analytics_consent(session: AsyncSession, user: User) -> bool:
+    """Действующее согласие на учёт источника перехода (ранний pd_consent его включал)."""
+    last = await _last(session, user, (PD_CONSENT, ANALYTICS_CONSENT, PD_WITHDRAW, ANALYTICS_WITHDRAW))
+    return last is not None and last.action in (PD_CONSENT, ANALYTICS_CONSENT)
 
 
 async def has_offer_accept(session: AsyncSession, user: User) -> bool:
@@ -58,10 +66,12 @@ def stage_price(price_total: int) -> int:
 
 
 async def stages_provided(session: AsyncSession, user: User) -> int:
-    """Сколько платных этапов фактически предоставлено: материалы дня направлены в чат
-    (запись создаётся только после успешной отправки, а не по наступлению календарной даты)."""
+    """Сколько платных этапов фактически предоставлено полностью: все материалы дня, включая
+    аудиопрактику, направлены в чат (запись создаётся только после успешной отправки, а не по
+    наступлению календарной даты; этап без аудио не учитывается)."""
     days = await session.scalars(
-        select(Delivery.day).where(Delivery.user_id == user.id, Delivery.day.in_(PAID_STAGES))
+        select(Delivery.day).where(Delivery.user_id == user.id, Delivery.day.in_(PAID_STAGES),
+                                   Delivery.complete.is_(True))
     )
     return len(set(days))
 
