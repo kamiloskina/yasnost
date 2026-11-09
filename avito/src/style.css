@@ -84,3 +84,5 @@ h2 { position: relative; margin-top: 34px; font-size: 84px; font-weight: 800; le
 .node h3 { margin-top: 14px; font-size: 46px; font-weight: 800; letter-spacing: -.02em; }
 .node p { margin-top: 16px; font-size: 27px; line-height: 1.4; color: #4F5056; }
 .link { align-self: center; font-size: 48px; color: #B0ABA2; font-weight: 700; }
+.nw { white-space: nowrap; }
+.card h3 .nw { white-space: normal; }
