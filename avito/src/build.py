@@ -100,6 +100,19 @@ ADS = {
                     "Портфолио работ, цены и отзывы",
                 ],
             },
+            {
+                "type": "calc",
+                "kicker": "Наши работы",
+                "title": "Калькулятор сметы на сайте",
+                "calc": "fiksik-calc.png",
+                "doc": "fiksik-estimate.png",
+                "features": [
+                    "Цены по 17 разделам работ",
+                    "Коэффициенты на работы",
+                    "Автоматическое формирование сметы",
+                    "Выгрузка сметы в PDF",
+                ],
+            },
         ],
     },
     # ------------------------------------------------------------------ SMM
@@ -236,6 +249,19 @@ ADS = {
                     "Форма расчёта на первом экране",
                     "Калькулятор сметы прямо на сайте",
                     "Портфолио работ, цены и отзывы",
+                ],
+            },
+            {
+                "type": "calc",
+                "kicker": "Наши работы",
+                "title": "Калькулятор сметы на сайте",
+                "calc": "fiksik-calc.png",
+                "doc": "fiksik-estimate.png",
+                "features": [
+                    "Цены по 17 разделам работ",
+                    "Коэффициенты на работы",
+                    "Автоматическое формирование сметы",
+                    "Выгрузка сметы в PDF",
                 ],
             },
         ],
@@ -402,7 +428,23 @@ def slide_portfolio(s, acc, idx, total):
 </div>"""
 
 
+def slide_calc(s, acc, idx, total):
+    feats = "".join(f'<li>{e(x)}</li>' for x in s["features"])
+    return f"""
+<div class="slide light" style="--a:{acc}">
+  <div class="top"><span class="kicker"><i></i>{e(s['kicker'])}</span><span class="pg">{idx:02d} / {total:02d}</span></div>
+  <h2>{e(s['title'])}</h2>
+  <div class="calc-row">
+    <div class="shot"><span class="cap">Клиент вводит объём работ</span><img src="../assets/{s['calc']}"></div>
+    <div class="link">→</div>
+    <div class="shot"><span class="cap">Смета формируется автоматически</span><img src="../assets/{s['doc']}"></div>
+  </div>
+  <ul class="calc-feats">{feats}</ul>
+</div>"""
+
+
 RENDER = {
+    "calc": slide_calc,
     "portfolio": slide_portfolio,
     "cover": slide_cover,
     "grid": slide_grid,

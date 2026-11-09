@@ -1,0 +1,126 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1600px; height: 1200px; background: #101217; }
+body { font-family: "Inter", sans-serif; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, .price, .chip b { font-family: "Inter Display", "Inter", sans-serif; }
+
+.slide { position: relative; width: 1600px; height: 1200px; overflow: hidden; padding: 84px 96px; display: flex; flex-direction: column; }
+.slide.cover, .slide.dark { background: #111318; color: #F3F1EC; }
+.slide.light { background: #F4F1EB; color: #15171C; }
+
+.glow { position: absolute; width: 1100px; height: 1100px; right: -380px; top: -420px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--a) 42%, transparent) 0%, transparent 62%); filter: blur(10px); }
+.glow.small { width: 900px; height: 900px; right: -420px; top: -520px; opacity: .7; }
+.grid-bg { position: absolute; inset: 0; opacity: .07;
+  background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 80px 80px; mask-image: linear-gradient(120deg, transparent 30%, #000 100%); }
+
+.top { position: relative; display: flex; justify-content: space-between; align-items: center; font-size: 26px; font-weight: 600; letter-spacing: .02em; }
+.kicker { display: inline-flex; align-items: center; gap: 14px; text-transform: uppercase; }
+.kicker i { width: 14px; height: 14px; border-radius: 50%; background: var(--a); display: inline-block; }
+.pg { opacity: .45; font-variant-numeric: tabular-nums; }
+
+/* cover */
+.cover h1 { position: relative; margin-top: 80px; font-size: 124px; line-height: 1.02; font-weight: 800; letter-spacing: -.035em; max-width: 1380px; }
+.cover h1 em { font-style: normal; color: var(--a); }
+.cover .sub { position: relative; margin-top: 42px; font-size: 42px; line-height: 1.3; color: #C9C6BF; max-width: 1200px; }
+.chips { position: relative; margin-top: auto; display: flex; gap: 22px; }
+.chip { flex: 1; padding: 30px 34px; border-radius: 28px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-top: 6px solid var(--c); }
+.chip span { display: block; font-size: 26px; color: #B9B6AF; font-weight: 500; }
+.chip b { display: block; margin-top: 8px; font-size: 46px; font-weight: 750; letter-spacing: -.02em; color: #fff; white-space: nowrap; }
+.cta { position: relative; margin-top: 30px; display: flex; align-items: center; gap: 22px; padding: 28px 36px; border-radius: 24px;
+  background: var(--a); color: #111318; font-size: 32px; font-weight: 700; }
+.cta .arrow { font-size: 40px; line-height: 1; }
+.cta.inline { margin-top: 34px; }
+.cta.dark-cta { background: #15171C; color: #F3F1EC; margin-top: auto; }
+.cta.dark-cta .arrow { color: var(--a); }
+
+/* headings */
+h2 { position: relative; margin-top: 34px; font-size: 84px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; }
+.lead { margin-top: 20px; font-size: 32px; line-height: 1.35; color: #55565B; max-width: 1250px; }
+.light .pg { color: #15171C; }
+
+/* grid cards */
+.cards { margin-top: 52px; flex: 1; display: grid; gap: 22px; }
+.cards.cols3 { grid-template-columns: repeat(3, 1fr); }
+.cards.cols4 { grid-template-columns: repeat(4, 1fr); }
+.card { background: #fff; border-radius: 28px; padding: 34px 32px; border: 1px solid #E6E1D8; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 8px; background: var(--c); }
+.card .n { font-size: 24px; font-weight: 700; color: var(--c); }
+.card h3 { margin-top: 14px; font-size: 36px; hyphens: auto; overflow-wrap: anywhere; font-weight: 750; letter-spacing: -.02em; line-height: 1.1; }
+.card p { margin-top: 14px; font-size: 26px; line-height: 1.38; color: #4F5056; }
+.cols3 .card h3 { font-size: 48px; }
+.cols3 .card p { font-size: 29px; }
+
+/* packages */
+.pkgs { margin-top: 48px; flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.pkg { position: relative; background: #fff; border: 1px solid #E6E1D8; border-radius: 32px; padding: 40px 38px; display: flex; flex-direction: column; }
+.pkg.hl { background: #15171C; color: #F3F1EC; border-color: #15171C; }
+.pkg h3 { font-size: 40px; font-weight: 700; }
+.pkg .price { margin-top: 18px; font-size: 64px; font-weight: 800; letter-spacing: -.03em; color: var(--a); white-space: nowrap; }
+.pkg .term { margin-top: 4px; font-size: 26px; color: #6A6B70; font-weight: 500; }
+.pkg.hl .term { color: #A9A7A1; }
+.pkg ul { list-style: none; margin-top: 28px; padding-top: 26px; border-top: 1px solid #E6E1D8; display: flex; flex-direction: column; gap: 14px; }
+.pkg.hl ul { border-color: rgba(255,255,255,.15); }
+.pkg li { font-size: 27px; line-height: 1.3; padding-left: 36px; position: relative; }
+.pkg li::before { content: ""; position: absolute; left: 4px; top: 12px; width: 14px; height: 14px; border-radius: 50%; background: var(--a); }
+.badge { position: absolute; top: -22px; left: 38px; background: var(--a); color: #111318; font-size: 22px; font-weight: 700; padding: 10px 20px; border-radius: 99px; }
+.note { margin-top: 28px; font-size: 26px; color: #5C5D62; }
+
+/* steps */
+.steps { position: relative; margin: auto 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+.steps::before { content: ""; position: absolute; left: 40px; right: 40px; top: 39px; height: 3px; background: linear-gradient(90deg, var(--a), rgba(255,255,255,.12)); }
+.step { position: relative; }
+.step .dot { width: 80px; height: 80px; border-radius: 50%; background: var(--a); color: #111318; display: grid; place-items: center; font-size: 36px; font-weight: 800; box-shadow: 0 0 0 10px #111318; }
+.step h3 { margin-top: 34px; font-size: 42px; font-weight: 750; }
+.step p { margin-top: 14px; font-size: 30px; line-height: 1.38; color: #BDBAB3; }
+.trust { position: relative; display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.trust span { display: flex; align-items: center; gap: 18px; font-size: 30px; font-weight: 600; padding: 24px 28px; border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+.trust i { font-style: normal; color: var(--a); font-weight: 800; }
+
+/* flow */
+.flow { margin-top: 56px; display: flex; align-items: stretch; gap: 12px; flex: 1; margin-bottom: 36px; }
+.node { flex: 1; background: #fff; border: 1px solid #E6E1D8; border-radius: 28px; padding: 34px 28px; border-top: 10px solid var(--c); }
+.node .n { font-size: 24px; font-weight: 700; color: var(--c); }
+.node h3 { margin-top: 14px; font-size: 46px; font-weight: 800; letter-spacing: -.02em; }
+.node p { margin-top: 16px; font-size: 27px; line-height: 1.4; color: #4F5056; }
+.link { align-self: center; font-size: 48px; color: #B0ABA2; font-weight: 700; }
+.nw { white-space: nowrap; }
+.card h3 .nw { white-space: normal; }
+
+/* portfolio */
+.pf { position: relative; margin-top: 40px; height: 600px; }
+.browser { position: absolute; left: 0; top: 0; width: 1000px; border-radius: 22px; overflow: hidden; background: #fff; border: 1px solid #E0DAD0; box-shadow: 0 30px 60px -30px rgba(20,22,28,.35); }
+.browser .bar { height: 42px; background: #ECE8E1; display: flex; align-items: center; gap: 10px; padding-left: 20px; }
+.browser .bar i { width: 13px; height: 13px; border-radius: 50%; background: #CFC8BC; }
+.browser img { display: block; width: 100%; height: 558px; object-fit: cover; object-position: top; }
+.phone { position: absolute; right: 10px; top: -10px; width: 374px; height: 620px; border-radius: 46px; background: #15171C; padding: 12px; box-shadow: 0 30px 60px -25px rgba(20,22,28,.5); }
+.phone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 36px; }
+.pf-info { margin-top: auto; display: flex; gap: 48px; align-items: center; }
+.pf-name { flex: 0 0 400px; }
+.pf-name b { display: block; font-family: "Inter Display", "Inter", sans-serif; font-size: 42px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; }
+.pf-name > span { display: block; margin-top: 12px; font-size: 26px; color: #6A6B70; }
+.pf-info ul { list-style: none; flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; }
+.pf-info li { font-size: 26px; line-height: 1.3; padding-left: 32px; position: relative; }
+.pf-info li::before { content: ""; position: absolute; left: 2px; top: 10px; width: 14px; height: 14px; border-radius: 50%; background: var(--a); }
+
+/* calculator */
+.calc-row { margin-top: 40px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.calc-row .shot { display: flex; flex-direction: column; gap: 14px; }
+.calc-row .cap { font-size: 24px; font-weight: 600; color: #55565B; }
+.calc-row img { display: block; height: 590px; width: auto; border-radius: 20px; border: 1px solid #E0DAD0; box-shadow: 0 30px 60px -30px rgba(20,22,28,.35); background: #fff; }
+.calc-row .link { font-size: 64px; margin-top: 40px; }
+.calc-feats { list-style: none; margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 40px; }
+.calc-feats li { font-size: 28px; font-weight: 600; white-space: nowrap; padding-left: 32px; position: relative; }
+.calc-feats li::before { content: ""; position: absolute; left: 2px; top: 11px; width: 14px; height: 14px; border-radius: 50%; background: var(--a); }
+</style></head><body>
+<div class="slide light" style="--a:#4C7BE8">
+  <div class="top"><span class="kicker"><i></i>Наши работы</span><span class="pg">07 / 07</span></div>
+  <h2>Калькулятор сметы на сайте</h2>
+  <div class="calc-row">
+    <div class="shot"><span class="cap">Клиент вводит объём работ</span><img src="../assets/fiksik-calc.png"></div>
+    <div class="link">→</div>
+    <div class="shot"><span class="cap">Смета формируется автоматически</span><img src="../assets/fiksik-estimate.png"></div>
+  </div>
+  <ul class="calc-feats"><li>Цены по 17 разделам работ</li><li>Коэффициенты на работы</li><li>Автоматическое формирование сметы</li><li>Выгрузка сметы в PDF</li></ul>
+</div></body></html>
