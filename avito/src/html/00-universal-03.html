@@ -1,0 +1,93 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1600px; height: 1200px; background: #101217; }
+body { font-family: "Inter", sans-serif; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, .price, .chip b { font-family: "Inter Display", "Inter", sans-serif; }
+
+.slide { position: relative; width: 1600px; height: 1200px; overflow: hidden; padding: 84px 96px; display: flex; flex-direction: column; }
+.slide.cover, .slide.dark { background: #111318; color: #F3F1EC; }
+.slide.light { background: #F4F1EB; color: #15171C; }
+
+.glow { position: absolute; width: 1100px; height: 1100px; right: -380px; top: -420px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--a) 42%, transparent) 0%, transparent 62%); filter: blur(10px); }
+.glow.small { width: 900px; height: 900px; right: -420px; top: -520px; opacity: .7; }
+.grid-bg { position: absolute; inset: 0; opacity: .07;
+  background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 80px 80px; mask-image: linear-gradient(120deg, transparent 30%, #000 100%); }
+
+.top { position: relative; display: flex; justify-content: space-between; align-items: center; font-size: 26px; font-weight: 600; letter-spacing: .02em; }
+.kicker { display: inline-flex; align-items: center; gap: 14px; text-transform: uppercase; }
+.kicker i { width: 14px; height: 14px; border-radius: 50%; background: var(--a); display: inline-block; }
+.pg { opacity: .45; font-variant-numeric: tabular-nums; }
+
+/* cover */
+.cover h1 { position: relative; margin-top: 80px; font-size: 124px; line-height: 1.02; font-weight: 800; letter-spacing: -.035em; max-width: 1380px; }
+.cover h1 em { font-style: normal; color: var(--a); }
+.cover .sub { position: relative; margin-top: 42px; font-size: 42px; line-height: 1.3; color: #C9C6BF; max-width: 1200px; }
+.chips { position: relative; margin-top: auto; display: flex; gap: 22px; }
+.chip { flex: 1; padding: 30px 34px; border-radius: 28px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-top: 6px solid var(--c); }
+.chip span { display: block; font-size: 26px; color: #B9B6AF; font-weight: 500; }
+.chip b { display: block; margin-top: 8px; font-size: 46px; font-weight: 750; letter-spacing: -.02em; color: #fff; white-space: nowrap; }
+.cta { position: relative; margin-top: 30px; display: flex; align-items: center; gap: 22px; padding: 28px 36px; border-radius: 24px;
+  background: var(--a); color: #111318; font-size: 32px; font-weight: 700; }
+.cta .arrow { font-size: 40px; line-height: 1; }
+.cta.inline { margin-top: 34px; }
+.cta.dark-cta { background: #15171C; color: #F3F1EC; margin-top: auto; }
+.cta.dark-cta .arrow { color: var(--a); }
+
+/* headings */
+h2 { position: relative; margin-top: 34px; font-size: 84px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; }
+.lead { margin-top: 20px; font-size: 32px; line-height: 1.35; color: #55565B; max-width: 1250px; }
+.light .pg { color: #15171C; }
+
+/* grid cards */
+.cards { margin-top: 52px; flex: 1; display: grid; gap: 22px; }
+.cards.cols3 { grid-template-columns: repeat(3, 1fr); }
+.cards.cols4 { grid-template-columns: repeat(4, 1fr); }
+.card { background: #fff; border-radius: 28px; padding: 34px 32px; border: 1px solid #E6E1D8; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 8px; background: var(--c); }
+.card .n { font-size: 24px; font-weight: 700; color: var(--c); }
+.card h3 { margin-top: 14px; font-size: 36px; hyphens: auto; overflow-wrap: anywhere; font-weight: 750; letter-spacing: -.02em; line-height: 1.1; }
+.card p { margin-top: 14px; font-size: 26px; line-height: 1.38; color: #4F5056; }
+.cols3 .card h3 { font-size: 48px; }
+.cols3 .card p { font-size: 29px; }
+
+/* packages */
+.pkgs { margin-top: 48px; flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.pkg { position: relative; background: #fff; border: 1px solid #E6E1D8; border-radius: 32px; padding: 40px 38px; display: flex; flex-direction: column; }
+.pkg.hl { background: #15171C; color: #F3F1EC; border-color: #15171C; }
+.pkg h3 { font-size: 40px; font-weight: 700; }
+.pkg .price { margin-top: 18px; font-size: 64px; font-weight: 800; letter-spacing: -.03em; color: var(--a); white-space: nowrap; }
+.pkg .term { margin-top: 4px; font-size: 26px; color: #6A6B70; font-weight: 500; }
+.pkg.hl .term { color: #A9A7A1; }
+.pkg ul { list-style: none; margin-top: 28px; padding-top: 26px; border-top: 1px solid #E6E1D8; display: flex; flex-direction: column; gap: 14px; }
+.pkg.hl ul { border-color: rgba(255,255,255,.15); }
+.pkg li { font-size: 27px; line-height: 1.3; padding-left: 36px; position: relative; }
+.pkg li::before { content: ""; position: absolute; left: 4px; top: 12px; width: 14px; height: 14px; border-radius: 50%; background: var(--a); }
+.badge { position: absolute; top: -22px; left: 38px; background: var(--a); color: #111318; font-size: 22px; font-weight: 700; padding: 10px 20px; border-radius: 99px; }
+.note { margin-top: 28px; font-size: 26px; color: #5C5D62; }
+
+/* steps */
+.steps { position: relative; margin: auto 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+.steps::before { content: ""; position: absolute; left: 40px; right: 40px; top: 39px; height: 3px; background: linear-gradient(90deg, var(--a), rgba(255,255,255,.12)); }
+.step { position: relative; }
+.step .dot { width: 80px; height: 80px; border-radius: 50%; background: var(--a); color: #111318; display: grid; place-items: center; font-size: 36px; font-weight: 800; box-shadow: 0 0 0 10px #111318; }
+.step h3 { margin-top: 34px; font-size: 42px; font-weight: 750; }
+.step p { margin-top: 14px; font-size: 30px; line-height: 1.38; color: #BDBAB3; }
+.trust { position: relative; display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.trust span { display: flex; align-items: center; gap: 18px; font-size: 30px; font-weight: 600; padding: 24px 28px; border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+.trust i { font-style: normal; color: var(--a); font-weight: 800; }
+
+/* flow */
+.flow { margin-top: 56px; display: flex; align-items: stretch; gap: 12px; flex: 1; margin-bottom: 36px; }
+.node { flex: 1; background: #fff; border: 1px solid #E6E1D8; border-radius: 28px; padding: 34px 28px; border-top: 10px solid var(--c); }
+.node .n { font-size: 24px; font-weight: 700; color: var(--c); }
+.node h3 { margin-top: 14px; font-size: 46px; font-weight: 800; letter-spacing: -.02em; }
+.node p { margin-top: 16px; font-size: 27px; line-height: 1.4; color: #4F5056; }
+.link { align-self: center; font-size: 48px; color: #B0ABA2; font-weight: 700; }
+</style></head><body>
+<div class="slide light" style="--a:#E07A4F">
+  <div class="top"><span class="kicker"><i></i>Что мы делаем</span><span class="pg">03 / 04</span></div>
+<h2>Что мы делаем</h2>
+  <div class="cards cols3"><div class="card" style="--c:#E07A4F"><span class="n">01</span><h3>SMM</h3><p>Стратегия, контент-план, посты, клипы, дизайн, таргет VK Реклама, посевы в Telegram</p></div><div class="card" style="--c:#4C7BE8"><span class="n">02</span><h3>Сайты</h3><p>Лендинги, сайты компаний, интернет-магазины, квизы. Адаптив, SEO-база, аналитика</p></div><div class="card" style="--c:#8A6BF0"><span class="n">03</span><h3>AI-агенты</h3><p>Боты-консультанты и ассистенты для Telegram, VK, сайта и Авито. Интеграция с CRM</p></div><div class="card" style="--c:#E07A4F"><span class="n">04</span><h3>Дизайн</h3><p>Оформление сообществ, обложки, баннеры, презентации в едином стиле</p></div><div class="card" style="--c:#4C7BE8"><span class="n">05</span><h3>Аналитика</h3><p>Яндекс Метрика, цели, UTM-метки — видно, откуда приходят заявки</p></div><div class="card" style="--c:#8A6BF0"><span class="n">06</span><h3>Автоматизация</h3><p>Заявки из всех каналов — в одну CRM или Telegram, без потерь</p></div></div>
+</div></body></html>
