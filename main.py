@@ -17,6 +17,7 @@ from bot.handlers import router
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
 from bot.privacy import router as privacy_router
+from bot.yookassa import router as yookassa_router
 from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as payments_router
@@ -54,7 +55,7 @@ async def main() -> None:
     from bot.content import audio_path
     await load_cache(sessionmaker)
     missing = [d for d in range(2, 8) if d not in CACHE and audio_path(d) is None]
-    if missing and config.payment_mode in {"yookassa", "stars"}:
+    if missing and config.payment_mode in {"yookassa", "stars", "yookassa_api"}:
         logging.warning("paid stages without audio practice: days %s — such stages are incomplete "
                         "(offer 2.4, 6.5); upload audio via /audio before selling", missing)
 
@@ -111,6 +112,7 @@ async def main() -> None:
     dp.include_router(support_router)
     dp.include_router(refunds_router)
     dp.include_router(privacy_router)
+    dp.include_router(yookassa_router)
     dp.include_router(router)
 
     health = await start_health_server()

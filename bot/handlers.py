@@ -235,6 +235,12 @@ async def _buy_course(bot: Bot, session: AsyncSession, user, config: Config, cha
     if not await legal.has_offer_accept(session, user):
         await _ask_offer_accept(bot, chat_id, config, "course")
         return
+    if config.payment_mode == "yookassa_api":
+        from bot.yookassa import start_payment
+        user.wants_purchase = True
+        await session.commit()
+        await start_payment(bot, session, user, config, chat_id, "course")
+        return
     if config.payment_mode in {"yookassa", "stars"}:
         user.wants_purchase = True
         await session.commit()
@@ -330,6 +336,10 @@ async def _buy_tracker(bot: Bot, session: AsyncSession, user, config: Config, ch
         return
     if not await legal.has_offer_accept(session, user):
         await _ask_offer_accept(bot, chat_id, config, TRACKER)
+        return
+    if config.payment_mode == "yookassa_api":
+        from bot.yookassa import start_payment
+        await start_payment(bot, session, user, config, chat_id, TRACKER)
         return
     if config.payment_mode in {"yookassa", "stars"}:
         await send_invoice(bot, chat_id, config, TRACKER)

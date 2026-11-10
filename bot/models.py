@@ -144,3 +144,18 @@ class PrivacyRequest(Base):
     result: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PendingPayment(Base):
+    """Платёж ЮKassa, созданный ботом (PAYMENT_MODE=yookassa_api), до подтверждения.
+    В ЮKassa передаётся только номер этой записи (metadata.order), без Telegram ID."""
+    __tablename__ = "pending_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    product: Mapped[str] = mapped_column(String(16))
+    amount: Mapped[int] = mapped_column(Integer)  # копейки
+    payment_id: Mapped[str | None] = mapped_column(String(64), unique=True)  # id платежа в ЮKassa
+    confirmation_url: Mapped[str | None] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | succeeded | canceled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

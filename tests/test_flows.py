@@ -28,6 +28,7 @@ from bot.payments import PAYLOAD, invoice_params
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
 from bot.privacy import router as privacy_router
+from bot.yookassa import router as yookassa_router
 from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as pay_router
@@ -70,7 +71,7 @@ class Harness:
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
         for r in (pay_router, audio_router, media_router, support_router, refunds_router, privacy_router,
-                  main_router):
+                  yookassa_router, main_router):
             r._parent_router = None  # роутеры модульные: отвязываем от прошлого теста
         self.dp.include_router(pay_router)
         self.dp.include_router(audio_router)
@@ -78,6 +79,7 @@ class Harness:
         self.dp.include_router(support_router)
         self.dp.include_router(refunds_router)
         self.dp.include_router(privacy_router)
+        self.dp.include_router(yookassa_router)
         self.dp.include_router(main_router)
         self.sm = sm
         self.n = 0

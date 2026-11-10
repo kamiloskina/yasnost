@@ -156,6 +156,9 @@ async def run_scheduler(
                 async with sessionmaker() as session:
                     result = await purge_expired(session)
                 log.info("retention purge: %s", result)
+            if config.payment_mode == "yookassa_api":
+                from bot.yookassa import poll_pending
+                await poll_pending(bot, sessionmaker, config)
             if config.autopost:
                 from bot.channel import publish_due
                 await publish_due(bot, sessionmaker, config)
