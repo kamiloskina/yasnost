@@ -731,3 +731,15 @@ async def test_audio_broadcast_to_day_receivers_once(sm):
     assert not any(isinstance(c, SendAudio) for c in calls)
     calls = await h.click("aud_send:1", uid=BUYER)  # не админ: только снятие «часиков» с кнопки
     assert not any(isinstance(c, (SendAudio, SendMessage)) for c in calls)
+
+
+async def test_tracker_only_sales(sm):
+    cfg = replace(BASE, payment_mode="stars", tracker_stars_price=320, course_sales=False)
+    h = Harness(cfg, sm)
+    await h.click("day1")
+    calls = await h.click("buy")  # курс закрыт
+    assert not any(isinstance(c, SendInvoice) for c in calls) and any("скоро" in t for t in texts_of(calls))
+    calls = await h.pre_checkout()  # и Telegram не пропустит оплату курса
+    assert [c.ok for c in calls if isinstance(c, AnswerPreCheckoutQuery)] == [False]
+    calls = await h.click("buy:tracker")  # трекер продаётся
+    assert any(isinstance(c, SendInvoice) for c in calls)

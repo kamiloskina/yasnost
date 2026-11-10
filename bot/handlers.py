@@ -227,7 +227,7 @@ async def _buy_course(bot: Bot, session: AsyncSession, user, config: Config, cha
     if await has_paid(session, user):
         await bot.send_message(chat_id, texts.ALREADY_PAID)
         return
-    if _payments_closed(config, chat_id):
+    if _payments_closed(config, chat_id) or (not config.course_sales and not config.is_admin(chat_id)):
         user.wants_purchase = True
         await session.commit()
         await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())

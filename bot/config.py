@@ -52,6 +52,8 @@ class Config:
     autopost: bool = False
     tracker_price_rub: int = 490
     tracker_stars_price: int = 0
+    # Можно открыть продажи только трекера, пока не готовы аудиопрактики курса
+    course_sales: bool = True
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
@@ -114,5 +116,6 @@ def load_config() -> Config:
         channel_id=channel_id,
         autopost=autopost,
         tracker_price_rub=int(os.getenv("TRACKER_PRICE_RUB", "490")),
+        course_sales=_bool("COURSE_SALES", True),
         tracker_stars_price=tracker_stars_price,
     )
