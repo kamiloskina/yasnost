@@ -84,6 +84,8 @@ async def on_pre_checkout(
     query: PreCheckoutQuery, sessionmaker: async_sessionmaker, config: Config
 ) -> None:
     product = PAYLOADS.get(query.invoice_payload)
+    if product == COURSE and not config.course_sales:
+        product = None  # продажи курса закрыты (COURSE_SALES=false)
     if product is None or config.payment_mode not in {"yookassa", "stars"}:
         await query.answer(ok=False, error_message=texts.PAYMENT_UNAVAILABLE)
         return

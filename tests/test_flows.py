@@ -28,6 +28,7 @@ from bot.payments import PAYLOAD, invoice_params
 from bot.admin_audio import router as audio_router
 from bot.admin_media import router as media_router
 from bot.privacy import router as privacy_router
+from bot.yookassa import router as yookassa_router
 from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as pay_router
@@ -70,7 +71,7 @@ class Harness:
         self.bot = Bot("1:x", session=self.session, default=DefaultBotProperties(parse_mode="HTML"))
         self.dp = Dispatcher(config=config, sessionmaker=sm)
         for r in (pay_router, audio_router, media_router, support_router, refunds_router, privacy_router,
-                  main_router):
+                  yookassa_router, main_router):
             r._parent_router = None  # роутеры модульные: отвязываем от прошлого теста
         self.dp.include_router(pay_router)
         self.dp.include_router(audio_router)
@@ -78,6 +79,7 @@ class Harness:
         self.dp.include_router(support_router)
         self.dp.include_router(refunds_router)
         self.dp.include_router(privacy_router)
+        self.dp.include_router(yookassa_router)
         self.dp.include_router(main_router)
         self.sm = sm
         self.n = 0
@@ -731,3 +733,15 @@ async def test_audio_broadcast_to_day_receivers_once(sm):
     assert not any(isinstance(c, SendAudio) for c in calls)
     calls = await h.click("aud_send:1", uid=BUYER)  # не админ: только снятие «часиков» с кнопки
     assert not any(isinstance(c, (SendAudio, SendMessage)) for c in calls)
+
+
+async def test_tracker_only_sales(sm):
+    cfg = replace(BASE, payment_mode="stars", tracker_stars_price=320, course_sales=False)
+    h = Harness(cfg, sm)
+    await h.click("day1")
+    calls = await h.click("buy")  # курс закрыт
+    assert not any(isinstance(c, SendInvoice) for c in calls) and any("скоро" in t for t in texts_of(calls))
+    calls = await h.pre_checkout()  # и Telegram не пропустит оплату курса
+    assert [c.ok for c in calls if isinstance(c, AnswerPreCheckoutQuery)] == [False]
+    calls = await h.click("buy:tracker")  # трекер продаётся
+    assert any(isinstance(c, SendInvoice) for c in calls)

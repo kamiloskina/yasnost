@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-PAYMENT_MODES = {"test", "off", "yookassa", "stars"}
+PAYMENT_MODES = {"test", "off", "yookassa", "stars", "yookassa_api"}
+# Режимы реальной оплаты (в отличие от test/off)
+PAID_MODES = {"yookassa", "stars", "yookassa_api"}
 PERSISTENT_DIR = os.getenv("PERSISTENT_DIR", "/data")
 
 
@@ -52,6 +54,12 @@ class Config:
     autopost: bool = False
     tracker_price_rub: int = 490
     tracker_stars_price: int = 0
+    # Можно открыть продажи только трекера, пока не готовы аудиопрактики курса
+    course_sales: bool = True
+    # Оплата на странице ЮKassa через API (PAYMENT_MODE=yookassa_api)
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    return_url: str = "https://t.me/Clarity7DaysBot"
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
@@ -81,7 +89,12 @@ def load_config() -> Config:
     tracker_stars_price = int(os.getenv("TRACKER_STARS_PRICE", "0") or 0)
     if payment_mode == "stars" and tracker_stars_price <= 0:
         raise SystemExit("Для PAYMENT_MODE=stars задай TRACKER_STARS_PRICE - цену трекера в звёздах")
-    if payment_mode in {"yookassa", "stars"}:
+    shop_id = os.getenv("YOOKASSA_SHOP_ID", "").strip()
+    secret_key = os.getenv("YOOKASSA_SECRET_KEY", "").strip()
+    if payment_mode == "yookassa_api" and not (shop_id and secret_key):
+        raise SystemExit("Для PAYMENT_MODE=yookassa_api нужны YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY "
+                         "(кабинет ЮKassa → Интеграция → Ключи API)")
+    if payment_mode in PAID_MODES:
         missing = [n for n in ("OFFER_URL", "PRIVACY_URL", "CONSENT_URL") if not os.getenv(n, "").strip()]
         if missing:
             raise SystemExit(
@@ -114,5 +127,9 @@ def load_config() -> Config:
         channel_id=channel_id,
         autopost=autopost,
         tracker_price_rub=int(os.getenv("TRACKER_PRICE_RUB", "490")),
+        course_sales=_bool("COURSE_SALES", True),
+        yookassa_shop_id=shop_id,
+        yookassa_secret_key=secret_key,
+        return_url=os.getenv("RETURN_URL", "https://t.me/Clarity7DaysBot").strip(),
         tracker_stars_price=tracker_stars_price,
     )
