@@ -159,7 +159,7 @@ async def test_stars_auto_refund_only_without_paid_stages(sm, all_audio):
 async def test_return_nothing_without_payment(sm):
     h = Harness(BASE, sm)
     calls = await h.text("/return")
-    assert any("нет оплаченного" in t for t in texts_of(calls))
+    assert any("нет твоих оплат" in t for t in texts_of(calls))
 
 
 # ---------- отзыв согласия ----------
@@ -240,3 +240,12 @@ async def test_analytics_consent_decline_records_nothing(sm):
     assert await actions(sm) == []
     async with sm() as s:
         assert (await s.scalar(select(User))).source is None
+
+
+async def test_return_shows_tracker_purchase(sm):
+    h = Harness(TESTER, sm)
+    await h.click("buy:tracker")
+    calls = await h.text("/return")
+    assert any("Трекер «30 дней внимания к себе»" in t and "/paysupport" in t for t in texts_of(calls))
+    calls = await h.text("/return", uid=777)
+    assert any("нет твоих оплат" in t for t in texts_of(calls))
