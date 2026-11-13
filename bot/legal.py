@@ -1,7 +1,8 @@
 """Согласия, акцепт оферты и возвраты.
 
 Модель продукта: День 1 - бесплатный; дни 2-7 - шесть платных этапов за 990 ₽,
-стоимость одного этапа - 990 / 6 = 165 ₽ (закреплена в оферте, п. 4).
+стоимость одного этапа - 990 / 6 = 165 ₽ (закреплена в оферте, п. 4). При предзаказе
+(490 ₽) этап стоит 490 / 6 ≈ 81,67 ₽: стоимость n этапов = цена × n / 6 с округлением до копейки.
 """
 
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from bot.models import Delivery, LegalAction, Purchase, RefundRequest, User
 
 # Редакция документов (оферта, политика, согласие). Меняй при изменении текстов документов -
 # тогда пользователи заново подтвердят новую редакцию; ранее заключённые договоры не меняются.
-DOC_VERSION = "2026-11-10"
+DOC_VERSION = "2026-11-13"
 
 PAID_STAGES = (2, 3, 4, 5, 6, 7)
 
@@ -60,9 +61,15 @@ async def has_offer_accept(session: AsyncSession, user: User) -> bool:
     return last is not None
 
 
+def stages_cost(price_total: int, stages: int) -> int:
+    """Стоимость n платных этапов в тех же единицах, что и цена (копейки/звёзды):
+    цена × n / 6 с округлением. Шесть этапов - ровно вся цена."""
+    return round(price_total * stages / len(PAID_STAGES))
+
+
 def stage_price(price_total: int) -> int:
-    """Стоимость одного платного этапа в тех же единицах, что и цена (копейки/звёзды)."""
-    return price_total // len(PAID_STAGES)
+    """Стоимость одного платного этапа (округлённая)."""
+    return stages_cost(price_total, 1)
 
 
 async def stages_provided(session: AsyncSession, user: User) -> int:
@@ -79,7 +86,7 @@ async def stages_provided(session: AsyncSession, user: User) -> int:
 def refund_amount(paid_amount: int, stages: int) -> int:
     """Сумма к возврату: уплаченное минус стоимость фактически предоставленных платных этапов.
     Бесплатный День 1 в расчёт не входит. Иные удержания не применяются."""
-    return max(paid_amount - stage_price(paid_amount) * stages, 0)
+    return max(paid_amount - stages_cost(paid_amount, stages), 0)
 
 
 async def open_request(session: AsyncSession, purchase: Purchase) -> RefundRequest | None:
@@ -121,4 +128,8 @@ async def complete_refund(session: AsyncSession, req: RefundRequest, final_amoun
 
 
 def fmt_amount(amount: int, currency: str) -> str:
-    return f"{amount / 100:.0f} ₽" if currency == "RUB" else f"{amount} ⭐"
+    if currency != "RUB":
+        return f"{amount} ⭐"
+    if amount % 100:
+        return f"{amount / 100:.2f} ₽".replace(".", ",")
+    return f"{amount // 100} ₽"

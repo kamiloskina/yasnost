@@ -114,7 +114,8 @@ async def cmd_return(message: Message, sessionmaker: async_sessionmaker, config:
         due = legal.refund_amount(purchase.amount, stages)
     await message.answer(
         texts.return_calc(stages, legal.fmt_amount(purchase.amount, purchase.currency),
-                          legal.fmt_amount(due, purchase.currency)),
+                          legal.fmt_amount(due, purchase.currency),
+                          legal.fmt_amount(legal.stage_price(purchase.amount), purchase.currency)),
         reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_RETURN_CONFIRM, callback_data=f"ret:{purchase.id}")]]),
     )
 

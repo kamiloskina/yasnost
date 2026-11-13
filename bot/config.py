@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass, field
+from datetime import date
 
 from dotenv import load_dotenv
 
@@ -60,6 +61,11 @@ class Config:
     yookassa_shop_id: str = ""
     yookassa_secret_key: str = ""
     return_url: str = "https://t.me/Clarity7DaysBot"
+    # Предзаказ: первые PRESALE_LIMIT оплат дней 2-7 по PRESALE_PRICE_RUB (0 - предзаказа нет)
+    presale_price_rub: int = 0
+    presale_limit: int = 0
+    # Дата, с которой начинают приходить платные этапы (дни 2-7). None - сразу после оплаты.
+    course_start: date | None = None
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
@@ -105,6 +111,15 @@ def load_config() -> Config:
     channel_id = os.getenv("CHANNEL_ID", "").strip()
     if autopost and not channel_id:
         raise SystemExit("Для AUTOPOST=true задай CHANNEL_ID, например @onaotkrytaya")
+    course_start = None
+    raw_start = os.getenv("COURSE_START", "").strip()
+    if raw_start:
+        try:
+            course_start = date.fromisoformat(raw_start)
+        except ValueError:
+            raise SystemExit("COURSE_START должна быть датой вида 2026-11-20")
+    presale_price = int(os.getenv("PRESALE_PRICE_RUB", "0") or 0)
+    presale_limit = int(os.getenv("PRESALE_LIMIT", "20") or 0)
     admin_ids = frozenset(
         int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x
     )
@@ -132,4 +147,7 @@ def load_config() -> Config:
         yookassa_secret_key=secret_key,
         return_url=os.getenv("RETURN_URL", "https://t.me/Clarity7DaysBot").strip(),
         tracker_stars_price=tracker_stars_price,
+        presale_price_rub=presale_price,
+        presale_limit=presale_limit if presale_price > 0 else 0,
+        course_start=course_start,
     )

@@ -78,8 +78,13 @@ async def cmd_start(
         next_line = texts.STATUS_NEED_PAY
     else:
         next_line = texts.STATUS_NEXT
-    markup = (keyboards.offer(config, message.from_user.id) if (not paid and done < TOTAL_DAYS)
-              else keyboards.my_days_only())
+    if not paid and done < TOTAL_DAYS:
+        from bot.presale import course_price
+        async with sessionmaker() as session:
+            cp = await course_price(session, config)
+        markup = keyboards.offer(config, message.from_user.id, cp.rub)
+    else:
+        markup = keyboards.my_days_only()
     await message.answer(texts.STATUS.format(done=done, next_line=next_line), reply_markup=markup)
 
 
@@ -167,6 +172,10 @@ async def after_payment(
     if last >= TOTAL_DAYS:
         await bot.send_message(chat_id, texts.PAID_OK.format(when="") + note)
         return
+    from bot import presale
+    if last < 2 and presale.before_start(config, user.timezone, now):
+        await bot.send_message(chat_id, texts.PAID_OK.format(when=texts.paid_presale_when(config)) + note)
+        return
     nxt = last + 1
     due = due_time_for_next_day(delivered[last], user.timezone, config.delivery_hour)
     if now >= due:
@@ -186,13 +195,21 @@ def _payments_closed(config: Config, chat_id: int) -> bool:
     )
 
 
-async def _ask_offer_accept(bot: Bot, chat_id: int, config: Config, product: str) -> None:
+async def _ask_offer_accept(bot: Bot, chat_id: int, config: Config, product: str,
+                            session: AsyncSession | None = None) -> None:
+    stage, note = "165 ₽", ""
     if product == TRACKER:
         label, price = texts.TRACKER_NAME, texts.tracker_price_label(config)
     else:
         label, price = "Дни 2-7 пути «7 дней. Путь к Ясности»", texts.price_label(config)
+        if session is not None and config.payment_mode != "stars":
+            from bot.presale import course_price
+            cp = await course_price(session, config)
+            price = f"{cp.rub} ₽" + (" (цена предзаказа)" if cp.presale else "")
+            stage = legal.fmt_amount(legal.stage_price(cp.rub * 100), "RUB")
+        note = texts.start_note(config)
     await bot.send_message(
-        chat_id, texts.offer_confirm(config, label, price),
+        chat_id, texts.offer_confirm(config, label, price, stage, note),
         reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_ACCEPT_OFFER, callback_data=f"accept:{product}")]]),
     )
 
@@ -233,7 +250,7 @@ async def _buy_course(bot: Bot, session: AsyncSession, user, config: Config, cha
         await bot.send_message(chat_id, texts.PAYMENT_CLOSED, reply_markup=keyboards.my_days_only())
         return
     if not await legal.has_offer_accept(session, user):
-        await _ask_offer_accept(bot, chat_id, config, "course")
+        await _ask_offer_accept(bot, chat_id, config, "course", session)
         return
     if config.payment_mode == "yookassa_api":
         from bot.yookassa import start_payment
@@ -244,12 +261,15 @@ async def _buy_course(bot: Bot, session: AsyncSession, user, config: Config, cha
     if config.payment_mode in {"yookassa", "stars"}:
         user.wants_purchase = True
         await session.commit()
-        await send_invoice(bot, chat_id, config)
+        from bot.presale import course_price
+        rub = (await course_price(session, config)).rub if config.payment_mode == "yookassa" else None
+        await send_invoice(bot, chat_id, config, rub=rub)
         return
     # test
+    from bot.presale import course_price
     await grant_purchase(
         session, user, provider="test", provider_payment_id=f"test-{user.tg_id}",
-        amount=config.price_rub * 100,
+        amount=(await course_price(session, config)).rub * 100,
     )
     await session.commit()
     await after_payment(bot, session, user, config, chat_id, test=True)
@@ -410,6 +430,11 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
         s = await stats(session)
         sources = [x for x in await stats_by_source(session) if x[0] != "-"]
         counters = list(await session.scalars(select(SourceCounter).order_by(SourceCounter.starts.desc())))
+        from bot import presale
+        presale_line = ""
+        if presale.enabled(config):
+            presale_line = (f"Предзаказ: оплачено {await presale.sold(session)} из {config.presale_limit} "
+                            f"мест по {config.presale_price_rub} ₽\n")
     clicks = "\n".join(f"  {c.source}: {c.starts}" for c in counters)
     src_lines = "\n".join(f"  {src}: пришли {n} → День 1: {d} → оплатили {p}" for src, n, d, p in sources)
     await message.answer(
@@ -418,6 +443,7 @@ async def cmd_stats(message: Message, sessionmaker: async_sessionmaker, config: 
         f"Открыли День 1: {s['started_day1']}\n"
         f"Нажали «купить»: {s['wants_purchase']}\n"
         f"Оплатили путь: {s['paid']}\n"
+        f"{presale_line}"
         f"Купили трекер отдельно: {s['tracker_paid']}\n"
         f"Получили трекер в подарок: {s['tracker_gift']}\n"
         f"Прошли все 7 дней: {s['completed']}\n"
