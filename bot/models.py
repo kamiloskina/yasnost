@@ -23,6 +23,8 @@ class User(Base):
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     # Нажала «Продолжить», когда оплата была закрыта: можно уведомить при открытии продаж.
     wants_purchase: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Когда ей отправлено единственное уведомление об открытии оплаты (/notify_waitlist)
+    waitlist_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Откуда пришла: параметр ссылки t.me/Clarity7DaysBot?start=<source> (reels, channel, …)
     source: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

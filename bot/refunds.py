@@ -96,6 +96,14 @@ async def cmd_return(message: Message, sessionmaker: async_sessionmaker, config:
         user = await _user(session, message, config)
         purchase = await _active_course_purchase(session, user)
         if purchase is None:
+            tracker = await session.scalar(
+                select(Purchase).where(Purchase.user_id == user.id, Purchase.product == TRACKER,
+                                       Purchase.status.in_(("paid", "refund_pending")),
+                                       Purchase.provider != "gift").order_by(Purchase.id.desc()).limit(1)
+            )
+            if tracker is not None:
+                await message.answer(texts.return_tracker(tracker.created_at.strftime("%d.%m.%Y")))
+                return
             await message.answer(texts.RETURN_NOTHING)
             return
         req = await legal.open_request(session, purchase)
@@ -106,7 +114,8 @@ async def cmd_return(message: Message, sessionmaker: async_sessionmaker, config:
         due = legal.refund_amount(purchase.amount, stages)
     await message.answer(
         texts.return_calc(stages, legal.fmt_amount(purchase.amount, purchase.currency),
-                          legal.fmt_amount(due, purchase.currency)),
+                          legal.fmt_amount(due, purchase.currency),
+                          legal.fmt_amount(legal.stage_price(purchase.amount), purchase.currency)),
         reply_markup=Kb(inline_keyboard=[[Btn(text=texts.BTN_RETURN_CONFIRM, callback_data=f"ret:{purchase.id}")]]),
     )
 

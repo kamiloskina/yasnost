@@ -159,7 +159,7 @@ async def test_stars_auto_refund_only_without_paid_stages(sm, all_audio):
 async def test_return_nothing_without_payment(sm):
     h = Harness(BASE, sm)
     calls = await h.text("/return")
-    assert any("нет оплаченного" in t for t in texts_of(calls))
+    assert any("нет твоих оплат" in t for t in texts_of(calls))
 
 
 # ---------- отзыв согласия ----------
@@ -175,8 +175,8 @@ def test_documents_consistent_with_product():
         assert "141" not in doc
     assert "990" in offer and "165" in offer and "День 1" in offer and "бесплатн" in offer
     assert "3 (трёх)" not in offer and "трёх календарных" not in offer  # нет срока «3 дня» на отказ
-    assert legal.DOC_VERSION == "2026-11-10"
-    assert "10.11.2026" in privacy and "08.11.2026" in consent and "2026-11-10" in offer
+    assert legal.DOC_VERSION == "2026-11-13"
+    assert "10.11.2026" in privacy and "08.11.2026" in consent and "2026-11-13" in offer
 
 
 def test_bot_texts_match_offer():
@@ -240,3 +240,12 @@ async def test_analytics_consent_decline_records_nothing(sm):
     assert await actions(sm) == []
     async with sm() as s:
         assert (await s.scalar(select(User))).source is None
+
+
+async def test_return_shows_tracker_purchase(sm):
+    h = Harness(TESTER, sm)
+    await h.click("buy:tracker")
+    calls = await h.text("/return")
+    assert any("Трекер «30 дней внимания к себе»" in t and "/paysupport" in t for t in texts_of(calls))
+    calls = await h.text("/return", uid=777)
+    assert any("нет твоих оплат" in t for t in texts_of(calls))

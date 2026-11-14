@@ -15,7 +15,7 @@ from bot import keyboards, texts
 from bot.config import Config
 from bot.content import audio_path, load_lesson
 from bot.models import Delivery, Purchase, User
-from bot.services import TOTAL_DAYS, delivered_map, has_paid, next_due_day
+from bot.services import FREE_DAYS, TOTAL_DAYS, delivered_map, has_paid, next_due_day
 
 log = logging.getLogger(__name__)
 
@@ -45,15 +45,23 @@ async def send_lesson(bot: Bot, chat_id: int, day: int) -> bool:
     return complete
 
 
-async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config) -> None:
+async def send_tail(bot: Bot, chat_id: int, day: int, paid: bool, config: Config,
+                    session: AsyncSession | None = None) -> None:
     """Сообщение после урока: предложение, анонс завтрашнего дня или финал."""
+    from bot import legal, presale
     if day == TOTAL_DAYS:
         await bot.send_message(chat_id, texts.COURSE_DONE, reply_markup=keyboards.my_days_only())
     elif not paid:
+        if session is not None:
+            cp = await presale.course_price(session, config)
+        else:
+            cp = presale.CoursePrice(config.price_rub, False, 0)
+        stage = legal.fmt_amount(legal.stage_price(cp.rub * 100), "RUB")
         await bot.send_message(
             chat_id,
-            texts.OFFER.format(days=keyboards.days_list(2), price=texts.price_label(config)),
-            reply_markup=keyboards.offer(config, chat_id),
+            texts.OFFER.format(days=keyboards.days_list(2),
+                               price_line=texts.course_price_line(config, cp, stage)),
+            reply_markup=keyboards.offer(config, chat_id, cp.rub),
         )
     else:
         await bot.send_message(chat_id, texts.AFTER_DAY.format(hour=config.delivery_hour))
@@ -96,7 +104,7 @@ async def deliver_day(
     await session.commit()
     paid = await has_paid(session, user)
     try:
-        await send_tail(bot, tg_id, day, paid, config)
+        await send_tail(bot, tg_id, day, paid, config, session)
         if day == TOTAL_DAYS and paid:
             from bot.tracker import gift_tracker
             await gift_tracker(bot, session, user, config)
@@ -112,6 +120,14 @@ async def deliver_if_due(
     delivered = await delivered_map(session, user)
     paid = await has_paid(session, user)
     day = next_due_day(delivered, paid, now, user.timezone, config.delivery_hour)
+    if day is not None and day > FREE_DAYS and config.course_start is not None:
+        from bot import presale
+        if presale.before_start(config, user.timezone, now):
+            return None
+        if not presale.has_audio(day):
+            # С даты старта этап уходит только вместе с аудиопрактикой (оферта, п. 6.4)
+            presale.note_waiting(day)
+            return None
     if day is not None and await deliver_day(bot, session, user, day, config, now):
         return day
     return None
@@ -151,6 +167,9 @@ async def run_scheduler(
                     user = await session.get(User, uid)
                     if user is not None:
                         await deliver_if_due(bot, session, user, config)
+            if config.course_start is not None:
+                from bot.presale import alert_waiting
+                await alert_waiting(bot, config)
             if _purge_due():
                 from bot.privacy import purge_expired
                 async with sessionmaker() as session:

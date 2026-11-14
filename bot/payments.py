@@ -40,9 +40,12 @@ def _product_info(config: Config, product: str) -> dict:
     )
 
 
-def invoice_params(config: Config, product: str = COURSE) -> dict:
-    """Параметры счёта для send_invoice в зависимости от режима оплаты и продукта."""
+def invoice_params(config: Config, product: str = COURSE, rub: int | None = None) -> dict:
+    """Параметры счёта для send_invoice в зависимости от режима оплаты и продукта.
+    rub - цена в рублях, если отличается от обычной (предзаказ)."""
     info = _product_info(config, product)
+    if rub:
+        info["rub"] = rub
     title, description, label = info["title"], info["description"], info["label"]
     if config.payment_mode == "stars":
         return dict(
@@ -73,10 +76,14 @@ def invoice_params(config: Config, product: str = COURSE) -> dict:
     raise ValueError(f"invoice for payment_mode={config.payment_mode} is not supported")
 
 
-async def send_invoice(bot: Bot, chat_id: int, config: Config, product: str = COURSE) -> None:
+async def send_invoice(bot: Bot, chat_id: int, config: Config, product: str = COURSE,
+                       rub: int | None = None) -> None:
     if product == COURSE:
-        await bot.send_message(chat_id, texts.before_invoice(config))
-    await bot.send_invoice(chat_id, **invoice_params(config, product))
+        from bot import legal
+        price = rub or config.price_rub
+        await bot.send_message(chat_id, texts.before_invoice(
+            config, f"{price} ₽", legal.fmt_amount(legal.stage_price(price * 100), "RUB")))
+    await bot.send_invoice(chat_id, **invoice_params(config, product, rub))
 
 
 @router.pre_checkout_query()

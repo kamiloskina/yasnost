@@ -21,6 +21,7 @@ from bot.yookassa import router as yookassa_router
 from bot.refunds import router as refunds_router
 from bot.support import router as support_router
 from bot.payments import router as payments_router
+from bot.presale import router as presale_router
 from bot.keyboards import titles
 
 
@@ -89,6 +90,7 @@ async def main() -> None:
         BotCommand(command="refund_done", description="Админ: возврат выполнен"),
         BotCommand(command="history", description="Админ: история пользователя"),
         BotCommand(command="forget", description="Админ: удалить данные пользователя"),
+        BotCommand(command="notify_waitlist", description="Админ: написать ждущим оплату"),
     ]
     await bot.set_my_commands(public_commands)
     # Админские команды видны в меню только администраторам
@@ -113,6 +115,7 @@ async def main() -> None:
     dp.include_router(refunds_router)
     dp.include_router(privacy_router)
     dp.include_router(yookassa_router)
+    dp.include_router(presale_router)
     dp.include_router(router)
 
     health = await start_health_server()

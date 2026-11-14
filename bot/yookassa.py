@@ -76,8 +76,11 @@ def make_client(config: Config) -> YooKassaClient:
     return YooKassaClient(config.yookassa_shop_id, config.yookassa_secret_key)
 
 
-def _price(config: Config, product: str) -> int:
-    return (config.tracker_price_rub if product == TRACKER else config.price_rub) * 100
+async def _price(session: AsyncSession, config: Config, product: str) -> int:
+    if product == TRACKER:
+        return config.tracker_price_rub * 100
+    from bot.presale import course_price
+    return (await course_price(session, config)).rub * 100
 
 
 def _pay_markup(pending: PendingPayment, price_label: str) -> Kb:
@@ -90,7 +93,7 @@ def _pay_markup(pending: PendingPayment, price_label: str) -> Kb:
 async def start_payment(bot: Bot, session: AsyncSession, user: User, config: Config,
                         chat_id: int, product: str) -> None:
     """Создаёт платёж (или показывает свежий неоплаченный) и присылает ссылку на оплату."""
-    price_label = texts.tracker_price_label(config) if product == TRACKER else texts.price_label(config)
+    from bot.legal import fmt_amount, stage_price
     now = datetime.now(timezone.utc)
     recent = await session.scalar(
         select(PendingPayment).where(
@@ -99,9 +102,11 @@ async def start_payment(bot: Bot, session: AsyncSession, user: User, config: Con
         ).order_by(PendingPayment.id.desc()).limit(1)
     )
     if recent is not None and as_utc(recent.created_at) > now - timedelta(minutes=REUSE_MINUTES):
-        await bot.send_message(chat_id, texts.pay_link(product), reply_markup=_pay_markup(recent, price_label))
+        # Свежая ссылка действует по своей цене (даже если места предзаказа уже закончились)
+        await bot.send_message(chat_id, texts.pay_link(product, fmt_amount(stage_price(recent.amount), "RUB")),
+                               reply_markup=_pay_markup(recent, fmt_amount(recent.amount, "RUB")))
         return
-    pending = PendingPayment(user_id=user.id, product=product, amount=_price(config, product))
+    pending = PendingPayment(user_id=user.id, product=product, amount=await _price(session, config, product))
     session.add(pending)
     await session.flush()
     try:
@@ -116,7 +121,8 @@ async def start_payment(bot: Bot, session: AsyncSession, user: User, config: Con
         await bot.send_message(chat_id, texts.PAY_CREATE_FAILED)
         return
     await session.commit()
-    await bot.send_message(chat_id, texts.pay_link(product), reply_markup=_pay_markup(pending, price_label))
+    await bot.send_message(chat_id, texts.pay_link(product, fmt_amount(stage_price(pending.amount), "RUB")),
+                           reply_markup=_pay_markup(pending, fmt_amount(pending.amount, "RUB")))
 
 
 async def check_payment(bot: Bot, session: AsyncSession, pending: PendingPayment, config: Config) -> str:
@@ -147,6 +153,7 @@ async def check_payment(bot: Bot, session: AsyncSession, pending: PendingPayment
     await session.commit()
     if created:
         await _deliver(bot, session, user, config, pending.product)
+        await _notify_receipt(bot, config, pending, data)
     return "succeeded"
 
 
@@ -158,6 +165,19 @@ async def _deliver(bot: Bot, session: AsyncSession, user: User, config: Config, 
         await send_tracker(bot, user.tg_id)
     else:
         await after_payment(bot, session, user, config, user.tg_id, test=False)
+
+
+async def _notify_receipt(bot: Bot, config: Config, pending: PendingPayment, data: dict) -> None:
+    """Напоминание администраторам: пробить чек в «Мой налог» (ст. 14 422-ФЗ).
+    ЮKassa может не формировать чеки самозанятых автоматически."""
+    paid_at = data.get("captured_at") or data.get("created_at") or ""
+    when = paid_at[:16].replace("T", " ") + " UTC" if paid_at else "сейчас"
+    text = texts.receipt_reminder(DESCRIPTIONS[pending.product], pending.amount / 100, when, pending.payment_id)
+    for admin_id in config.admin_ids:
+        try:
+            await bot.send_message(admin_id, text)
+        except Exception:
+            log.exception("cannot send receipt reminder to %s", admin_id)
 
 
 async def poll_pending(bot: Bot, sessionmaker: async_sessionmaker, config: Config) -> None:

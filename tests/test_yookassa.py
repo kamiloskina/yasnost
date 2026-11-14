@@ -108,6 +108,8 @@ async def test_tracker_via_api_sends_pdf(sm, fake):
     fake.pay("pay-1")
     calls = await h.click("paycheck:1")
     assert len([c for c in calls if isinstance(c, SendDocument)]) == 1
+    reminder = [c.text for c in calls if isinstance(c, SendMessage) and c.chat_id == ADMIN]
+    assert reminder and "Новая оплата" in reminder[0] and "490 ₽" in reminder[0] and "pay-1" in reminder[0]
 
 
 async def test_link_reused_and_foreign_check_ignored(sm, fake):
