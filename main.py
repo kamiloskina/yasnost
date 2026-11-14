@@ -91,6 +91,7 @@ async def main() -> None:
         BotCommand(command="history", description="Админ: история пользователя"),
         BotCommand(command="forget", description="Админ: удалить данные пользователя"),
         BotCommand(command="notify_waitlist", description="Админ: написать ждущим оплату"),
+        BotCommand(command="buyers", description="Админ: кто оплатил"),
     ]
     await bot.set_my_commands(public_commands)
     # Админские команды видны в меню только администраторам
