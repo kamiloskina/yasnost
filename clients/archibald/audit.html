@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Точки роста сайта Арчибальд</title>
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Inter", sans-serif; color: #15171C; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+h1, h2, h3 { font-family: "Inter Display", "Inter", sans-serif; letter-spacing: -.02em; }
+.page { width: 210mm; height: 297mm; padding: 16mm 16mm 14mm; position: relative; overflow: hidden; page-break-after: always; background: #F4F1EB; }
+.page:last-child { page-break-after: auto; }
+.kicker { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #4C7BE8; display: flex; align-items: center; gap: 8px; }
+.kicker i { width: 8px; height: 8px; border-radius: 50%; background: #4C7BE8; display: inline-block; }
+h1 { font-size: 26pt; line-height: 1.05; margin-top: 6mm; font-weight: 800; }
+.lead { margin-top: 4mm; font-size: 10.5pt; line-height: 1.45; color: #45464B; max-width: 165mm; }
+.items { margin-top: 7mm; display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+.item { background: #fff; border: 1px solid #E6E1D8; border-radius: 4mm; padding: 4.5mm 5mm; position: relative; }
+.item .n { font-size: 8.5pt; font-weight: 700; color: #4C7BE8; }
+.item h3 { font-size: 12pt; margin-top: 1.5mm; font-weight: 750; line-height: 1.15; }
+.item .now { margin-top: 2.5mm; font-size: 9pt; line-height: 1.4; color: #55565B; }
+.item .now b { color: #B4532E; font-weight: 600; }
+.item .will { margin-top: 2mm; font-size: 9pt; line-height: 1.4; }
+.item .will b { color: #2F7A55; font-weight: 600; }
+.foot { position: absolute; left: 16mm; right: 16mm; bottom: 10mm; font-size: 8pt; color: #8A8B90; display: flex; justify-content: space-between; }
+.shots { margin-top: 6mm; display: grid; grid-template-columns: 1fr 1fr 0.62fr; gap: 5mm; align-items: start; }
+.shot { background: #fff; border: 1px solid #E6E1D8; border-radius: 4mm; padding: 3mm; }
+.shot img { display: block; width: 100%; border-radius: 2.5mm; }
+.shot.tall img { height: 118mm; object-fit: cover; object-position: top; }
+.shot p { margin-top: 2.5mm; font-size: 8.5pt; line-height: 1.35; color: #45464B; }
+h2 { font-size: 15pt; font-weight: 800; margin-top: 8mm; }
+.urls { margin-top: 3mm; columns: 3; column-gap: 6mm; font-size: 7.6pt; line-height: 1.55; color: #45464B; font-family: "JetBrains Mono", monospace; }
+.next { margin-top: 6mm; background: #15171C; color: #F3F1EC; border-radius: 4mm; padding: 5mm 6mm; font-size: 10pt; line-height: 1.45; }
+.next b { color: #9DB6F5; }
+</style></head><body>
+
+<section class="page">
+  <div class="kicker"><i></i>Экспресс-аудит действующего сайта</div>
+  <h1>Сайт сети груминг-салонов «Арчибальд»: точки роста</h1>
+  <p class="lead">Мы посмотрели главную страницу и страницы пород на компьютере и телефоне. Ниже то, что сейчас мешает клиенту записаться и сайту получать трафик из Яндекса, и как это решит новая версия. Всё проверено на текущем сайте, без оценок «на глаз».</p>
+
+  <div class="items">
+    <div class="item"><span class="n">01</span><h3>Запись в один клик</h3>
+      <p class="now"><b>Сейчас:</b> на главной нет кнопки онлайн-записи. На первом экране телефона кнопки «Заказать звонок», «Стать моделью для учеников» и «Аренда стола грумера». Запись через YCLIENTS есть только на страницах пород.</p>
+      <p class="will"><b>Сделаем:</b> кнопка записи на каждом экране, с выбором салона и сразу в нужный филиал YCLIENTS.</p></div>
+    <div class="item"><span class="n">02</span><h3>Единый прайс с поиском</h3>
+      <p class="now"><b>Сейчас:</b> цены на 20+ отдельных страницах пород, внутри зависят от веса питомца. Общего поиска нет, свою породу нужно искать по картинкам.</p>
+      <p class="will"><b>Сделаем:</b> один каталог на 460 позиций: ввёл породу, выбрал вес, увидел цену и кнопку записи.</p></div>
+    <div class="item"><span class="n">03</span><h3>Клиентам: только клиентское</h3>
+      <p class="now"><b>Сейчас:</b> на одной странице перемешаны клиенты, вакансии, академия, модели для учеников и аренда стола грумера.</p>
+      <p class="will"><b>Сделаем:</b> вынесем вакансии, академию и аренду в отдельный раздел, чтобы не отвлекать клиентов от записи.</p></div>
+    <div class="item"><span class="n">04</span><h3>Короче и легче</h3>
+      <p class="now"><b>Сейчас:</b> главная около 11 000 px на компьютере и примерно 20 экранов на телефоне, код главной весит около 1 МБ.</p>
+      <p class="will"><b>Сделаем:</b> оставим суть: услуги, цены, салоны, запись, отзывы. Облегчим загрузку на мобильном интернете.</p></div>
+    <div class="item"><span class="n">05</span><h3>Одна аккуратная шапка</h3>
+      <p class="now"><b>Сейчас:</b> на страницах пород шапка повторяется дважды: в первой три салона, во второй два. В ссылках два разных телефона, у акций разные условия для разных салонов.</p>
+      <p class="will"><b>Сделаем:</b> одна шапка, три салона с адресами, телефонами и картой, понятные условия акций.</p></div>
+    <div class="item"><span class="n">06</span><h3>SEO-основа</h3>
+      <p class="now"><b>Сейчас:</b> ни на главной, ни на странице шпица нет заголовка H1. Описание главной в поиске повторяет заголовок. У 76 из 81 изображения на главной нет описаний (alt).</p>
+      <p class="will"><b>Сделаем:</b> H1, заголовки и описания на всех страницах, описания изображений, Метрика с целями на запись и заявки.</p></div>
+  </div>
+
+  <div class="foot"><span>Экспресс-аудит, ноябрь 2026</span><span>1 / 2</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker"><i></i>Как это выглядит сейчас</div>
+  <div class="shots">
+    <div class="shot tall"><img src="assets/mob-first.jpg"><p><b>Главная, первый экран телефона.</b> Кнопки для учеников и грумеров, кнопки записи нет.</p></div>
+    <div class="shot tall"><img src="assets/breed-first.jpg"><p><b>Страница породы на телефоне.</b> Шапка повторяется дважды, во второй только два салона из трёх.</p></div>
+    <div class="shot tall"><img src="assets/desk-full.jpg"><p><b>Главная целиком на компьютере.</b> Около 11 000 px.</p></div>
+  </div>
+
+  <h2>Переезд без потери позиций в Яндексе</h2>
+  <p class="lead">В карте сайта 27 страниц, из них около 20 страниц пород, по которым сайт находят в поиске («стрижка шпица Москва» и т. п.). Для каждой настроим постраничную переадресацию (301) на новый адрес, чтобы не потерять накопленные позиции.</p>
+  <div class="urls">
+    /<br>/strizhka-shpica<br>/strizhka-shi-tcu<br>/strizhka-vest-haylend-white-terera<br>/strizhka-chihuahua<br>/strizhka-dzhek-rassel-terera<br>/strizka-samoeda<br>/strizhka-korgi<br>/strizhka-cvergshnaucera<br>/strizhka-bishona-frize<br>/strizhka-yorka<br>/strizhka-bivera<br>/strizhka-bolonki<br>/strizhka-koker-spanielya<br>/strizhka-king-charlz-spanielya<br>/strizhka-pudelya<br>/strizhka-metisa-besporodnoy-sobaki<br>/strizhka-koshki<br>/strizhka-keeshondadogs<br>/japshpitz<br>/policy<br>/mops<br>/shiba-inu<br>/beagle<br>/akita<br>/offer_agreement<br>/abonement
+  </div>
+
+  <div class="next"><b>Дальше:</b> после ТЗ заполним таблицу из раздела 12 со сроками и стоимостью по каждому блоку работ. Все пункты этого аудита будут учтены в оценке.</div>
+
+  <div class="foot"><span>Экспресс-аудит, ноябрь 2026</span><span>2 / 2</span></div>
+</section>
+</body></html>
