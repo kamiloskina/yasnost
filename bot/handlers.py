@@ -533,3 +533,34 @@ async def cmd_forget(
         await session.commit()
         n = req.id
     await message.answer(f"Обращение №{n} выполнено. {result}\n\nСообщи человеку результат в течение срока ответа.")
+
+
+@router.message(Command("buyers"))
+async def cmd_buyers(message: Message, sessionmaker: async_sessionmaker, config: Config) -> None:
+    """Админ: /buyers - последние оплаты (курс и трекер) со ссылкой на профиль покупательницы."""
+    if not config.is_admin(message.from_user.id):
+        return
+    from sqlalchemy import select
+
+    from bot.legal import fmt_amount
+    from bot.models import Purchase, User
+    from bot.services import as_utc
+    tz = ZoneInfo(config.default_timezone)
+    async with sessionmaker() as session:
+        rows = (await session.execute(
+            select(Purchase, User).join(User, User.id == Purchase.user_id)
+            .where(Purchase.provider.not_in(("test", "gift")))
+            .order_by(Purchase.id.desc()).limit(30)
+        )).all()
+    if not rows:
+        await message.answer("Оплат пока нет.")
+        return
+    names = {"course": "Дни 2-7", "tracker": "Трекер"}
+    status = {"paid": "", "refund_pending": " (заявлен возврат)", "refunded": " (возвращено)"}
+    lines = ["<b>Последние оплаты</b>"]
+    for p, u in rows:
+        lines.append(f"{as_utc(p.created_at).astimezone(tz):%d.%m %H:%M} - {names.get(p.product, p.product)}, "
+                     f"{fmt_amount(p.amount, p.currency)}{status.get(p.status, ' (' + p.status + ')')}\n"
+                     f"   {texts.buyer_link(u.tg_id)}")
+    lines.append("\nПодробно по одной: /history ID")
+    await message.answer("\n".join(lines))

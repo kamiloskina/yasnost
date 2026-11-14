@@ -153,7 +153,7 @@ async def check_payment(bot: Bot, session: AsyncSession, pending: PendingPayment
     await session.commit()
     if created:
         await _deliver(bot, session, user, config, pending.product)
-        await _notify_receipt(bot, config, pending, data)
+        await _notify_receipt(bot, config, pending, data, user.tg_id)
     return "succeeded"
 
 
@@ -167,12 +167,14 @@ async def _deliver(bot: Bot, session: AsyncSession, user: User, config: Config, 
         await after_payment(bot, session, user, config, user.tg_id, test=False)
 
 
-async def _notify_receipt(bot: Bot, config: Config, pending: PendingPayment, data: dict) -> None:
+async def _notify_receipt(bot: Bot, config: Config, pending: PendingPayment, data: dict,
+                          tg_id: int | None = None) -> None:
     """Напоминание администраторам: пробить чек в «Мой налог» (ст. 14 422-ФЗ).
     ЮKassa может не формировать чеки самозанятых автоматически."""
     paid_at = data.get("captured_at") or data.get("created_at") or ""
     when = paid_at[:16].replace("T", " ") + " UTC" if paid_at else "сейчас"
-    text = texts.receipt_reminder(DESCRIPTIONS[pending.product], pending.amount / 100, when, pending.payment_id)
+    text = texts.receipt_reminder(DESCRIPTIONS[pending.product], pending.amount / 100, when,
+                                  pending.payment_id, tg_id)
     for admin_id in config.admin_ids:
         try:
             await bot.send_message(admin_id, text)

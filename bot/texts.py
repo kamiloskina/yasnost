@@ -410,10 +410,16 @@ PAY_CHECK_ERROR = "Не получилось проверить платёж п�
 PAY_CREATE_FAILED = "Не получилось создать платёж. Попробуй через пару минут или напиши в /paysupport."
 
 
-def receipt_reminder(name: str, amount: float, when: str, payment_id: str) -> str:
+def buyer_link(tg_id: int) -> str:
+    """Ссылка на профиль покупательницы в Telegram по ID: имя бот не хранит, Telegram покажет его сам."""
+    return f'<a href="tg://user?id={tg_id}">открыть профиль</a> (ID <code>{tg_id}</code>)'
+
+
+def receipt_reminder(name: str, amount: float, when: str, payment_id: str, tg_id: int | None = None) -> str:
     return (
         "💰 <b>Новая оплата</b>\n\n"
-        f"Товар: {name}\n"
+        + (f"Кто: {buyer_link(tg_id)}\n" if tg_id else "")
+        + f"Товар: {name}\n"
         f"Сумма: {amount:.0f} ₽\n"
         f"Время оплаты: {when}\n"
         f"Платёж ЮKassa: <code>{payment_id}</code>\n\n"

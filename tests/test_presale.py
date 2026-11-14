@@ -153,3 +153,11 @@ def test_terms_mention_presale_and_full_refund_if_late():
     t = texts.terms(replace(PRESALE, course_start=start))
     assert "490 ₽ вместо 990 ₽" in t and texts.ru_date(start) in t and "вернём деньги полностью" in t
     assert "Предзаказ" not in texts.terms(BASE)
+
+
+async def test_buyers_lists_paid_with_profile_link(sm, fake, all_audio):
+    h = Harness(PRESALE, sm)
+    await _buy_and_pay(h, fake, 101)
+    assert not texts_of(await h.text("/buyers", uid=BUYER))  # не админ - тишина
+    out = texts_of(await h.text("/buyers", uid=ADMIN))[0]
+    assert "Дни 2-7, 490 ₽" in out and 'tg://user?id=101' in out
